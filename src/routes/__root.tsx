@@ -13,9 +13,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { GameProvider } from "@/lib/ludo/store";
 import { registerOfflineSupport } from "../lib/ludo/register-sw";
-import { InstallPrompt } from "@/components/ludo/InstallPrompt";
 import { Toaster } from "../components/ui/sonner";
-
 
 function NotFoundComponent() {
   return (
@@ -105,8 +103,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: "https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap",
       },
       { rel: "manifest", href: "/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: "/icons/icon-192.png" },
-      { rel: "icon", type: "image/png", href: "/favicon.png" },
+      { rel: "apple-touch-icon", sizes: "180x180", href: "/icons/apple-touch-icon.png" },
+      { rel: "icon", type: "image/png", sizes: "64x64", href: "/favicon.png" },
+      { rel: "shortcut icon", href: "/favicon.ico" },
     ],
   }),
   shellComponent: RootShell,
@@ -114,7 +113,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   notFoundComponent: NotFoundComponent,
   errorComponent: ErrorComponent,
 });
-
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
@@ -167,4 +165,3 @@ function OfflineBanner() {
     </div>
   );
 }
-

@@ -2,10 +2,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Play, BookOpen, Settings2, RotateCcw } from "lucide-react";
 
-import { Token } from "@/components/ludo/Token";
+import { InstallButton } from "@/components/ludo/InstallPrompt";
 import { hasSave } from "@/lib/ludo/persistence";
 import { unlockAudio, playSfx } from "@/lib/ludo/audio";
-import { COLOR_ORDER } from "@/lib/ludo/board";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -51,20 +50,26 @@ function HomeMenu() {
       <div
         aria-hidden
         className="pointer-events-none absolute -right-10 top-16 h-32 w-32 rounded-full opacity-20"
-        style={{ background: "radial-gradient(circle at 35% 30%, var(--ludo-yellow-light), var(--ludo-yellow-dark))" }}
+        style={{
+          background:
+            "radial-gradient(circle at 35% 30%, var(--ludo-yellow-light), var(--ludo-yellow-dark))",
+        }}
       />
       <div
         aria-hidden
         className="pointer-events-none absolute -left-12 bottom-24 h-40 w-40 rounded-full opacity-15"
-        style={{ background: "radial-gradient(circle at 35% 30%, var(--ludo-blue-light), var(--ludo-blue-dark))" }}
+        style={{
+          background:
+            "radial-gradient(circle at 35% 30%, var(--ludo-blue-light), var(--ludo-blue-dark))",
+        }}
       />
 
       <header className="relative text-center">
-        <div className="mx-auto mb-6 grid h-28 w-28 animate-[ludo-float-logo_5s_ease-in-out_infinite] grid-cols-2 grid-rows-2 gap-2 rounded-[1.6rem] bg-white p-3 shadow-[var(--elev-3)]">
-          {COLOR_ORDER.map((c) => (
-            <Token key={c} color={c} className="h-full w-full" glyph={false} />
-          ))}
-        </div>
+        <img
+          src="/logo.png"
+          alt="atiUjjwal Ludo Game"
+          className="mx-auto mb-6 h-28 w-28 animate-[ludo-float-logo_5s_ease-in-out_infinite] rounded-[1.6rem] shadow-[var(--elev-3)]"
+        />
         <h1
           className="font-display text-6xl tracking-tight"
           style={{
@@ -91,7 +96,8 @@ function HomeMenu() {
           <span
             className="relative flex h-20 w-full items-center justify-center gap-3 overflow-hidden rounded-3xl text-2xl font-black text-white transition-transform active:translate-y-1"
             style={{
-              background: "linear-gradient(160deg, var(--ludo-red-light), var(--ludo-red) 55%, var(--ludo-red-dark))",
+              background:
+                "linear-gradient(160deg, var(--ludo-red-light), var(--ludo-red) 55%, var(--ludo-red-dark))",
               boxShadow: "0 8px 0 0 var(--ludo-red-dark), 0 20px 34px -16px var(--ludo-red-dark)",
             }}
           >
@@ -127,6 +133,8 @@ function HomeMenu() {
             </span>
           </Link>
         </div>
+
+        <InstallButton />
       </nav>
     </main>
   );

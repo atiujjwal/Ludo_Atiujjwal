@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
-import { Download, Share2, X } from "lucide-react";
+import { Download, MoreVertical, Plus, Share2 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
-const DISMISS_KEY = "ludo:install-dismissed";
-const DISMISS_DAYS = 7;
+type DeferredPrompt = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
+
+type MobilePlatform = "android" | "ios" | null;
 
 function blockedHost(hostname: string): boolean {
   return (
@@ -19,129 +23,143 @@ function blockedHost(hostname: string): boolean {
   );
 }
 
-function isPhone(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent,
-  );
+function mobilePlatform(): MobilePlatform {
+  if (typeof navigator === "undefined") return null;
+
+  const ios =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+  if (ios) return "ios";
+  if (/Android/i.test(navigator.userAgent)) return "android";
+  return null;
 }
 
 function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
   if (window.matchMedia("(display-mode: standalone)").matches) return true;
-  const nav = window.navigator as unknown as { standalone?: boolean };
-  return nav.standalone === true;
+
+  return (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
 }
 
-function isDismissed(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    const raw = window.localStorage.getItem(DISMISS_KEY);
-    if (!raw) return false;
-    const at = Number(raw);
-    if (Number.isNaN(at)) return false;
-    const ms = DISMISS_DAYS * 24 * 60 * 60 * 1000;
-    return Date.now() - at < ms;
-  } catch {
-    return false;
-  }
-}
-
-function dismiss() {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(DISMISS_KEY, String(Date.now()));
-  } catch {
-    /* storage may be blocked */
-  }
-}
-
-type DeferredPrompt = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
-
-export function InstallPrompt() {
-  const [visible, setVisible] = useState(false);
-  const [ios, setIos] = useState(false);
+export function InstallButton() {
+  const [platform, setPlatform] = useState<MobilePlatform>(null);
+  const [available, setAvailable] = useState(false);
+  const [installed, setInstalled] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<DeferredPrompt | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (blockedHost(window.location.hostname)) return;
-    if (isStandalone()) return;
-    if (!isPhone()) return;
-    if (isDismissed()) return;
+    if (typeof window === "undefined" || blockedHost(window.location.hostname)) return;
 
-    const isIOS =
-      /iPad|iPhone|iPod/.test(navigator.userAgent) &&
-      !(window as unknown as { MSStream?: unknown }).MSStream;
-    setIos(isIOS);
-
-    if (isIOS) {
-      setVisible(true);
+    if (isStandalone()) {
+      setInstalled(true);
       return;
     }
 
-    const onBeforeInstall = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as DeferredPrompt);
-      setVisible(true);
+    const detectedPlatform = mobilePlatform();
+    setPlatform(detectedPlatform);
+    setAvailable(detectedPlatform !== null);
+
+    const onBeforeInstall = (event: Event) => {
+      event.preventDefault();
+      setDeferredPrompt(event as DeferredPrompt);
+      setAvailable(true);
+    };
+
+    const onInstalled = () => {
+      setInstalled(true);
+      setDeferredPrompt(null);
+      setShowHelp(false);
     };
 
     window.addEventListener("beforeinstallprompt", onBeforeInstall);
-    return () => window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
   }, []);
 
   const handleInstall = async () => {
-    if (ios || !deferredPrompt) return;
+    if (platform === "ios" || !deferredPrompt) {
+      setShowHelp(true);
+      return;
+    }
+
     try {
       await deferredPrompt.prompt();
-      await deferredPrompt.userChoice;
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === "accepted") setInstalled(true);
     } catch {
-      /* prompt may fail or be cancelled */
+      setShowHelp(true);
     } finally {
       setDeferredPrompt(null);
-      setVisible(false);
-      dismiss();
     }
   };
 
-  const handleDismiss = () => {
-    setVisible(false);
-    dismiss();
-  };
+  if (!available || installed) return null;
 
-  if (!visible) return null;
+  const isIOS = platform === "ios";
 
   return (
-    <div className="fixed inset-x-0 bottom-12 z-50 px-4">
-      <div className="mx-auto flex max-w-sm items-center gap-3 rounded-2xl bg-card p-3 shadow-lg ring-1 ring-border">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-          {ios ? <Share2 className="h-5 w-5" /> : <Download className="h-5 w-5" />}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold leading-tight">Play offline on your phone</p>
-          <p className="text-xs text-muted-foreground leading-tight">
-            {ios
-              ? "Tap Share, then 'Add to Home Screen'."
-              : "Add Ludo to your home screen for offline play."}
-          </p>
-        </div>
-        {!ios && (
-          <Button size="sm" className="shrink-0 rounded-xl" onClick={handleInstall}>
-            Add
-          </Button>
-        )}
-        <button
-          type="button"
-          onClick={handleDismiss}
-          className="shrink-0 rounded-full p-1.5 text-muted-foreground transition-colors hover:bg-accent"
-          aria-label="Dismiss install prompt"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
+    <>
+      <button
+        type="button"
+        onClick={() => void handleInstall()}
+        className="group flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-[var(--ludo-blue-dark)] text-sm font-black text-white transition-transform active:translate-y-0.5"
+        style={{
+          background:
+            "linear-gradient(160deg, var(--ludo-blue-light), var(--ludo-blue) 55%, var(--ludo-blue-dark))",
+          boxShadow: "0 5px 0 0 var(--ludo-blue-dark), 0 12px 22px -14px var(--ludo-blue-dark)",
+        }}
+        aria-label="Install Ludo on this phone"
+      >
+        <Download className="h-5 w-5 transition-transform group-active:translate-y-0.5" />
+        Install on your phone
+      </button>
+
+      <Dialog open={showHelp} onOpenChange={setShowHelp}>
+        <DialogContent className="w-[calc(100%-2rem)] max-w-sm rounded-[2rem] border-0 bg-[var(--board)] p-6 shadow-[var(--elev-3)]">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-[var(--elev-2)]">
+            <img src="/logo.png" alt="" className="h-14 w-14 rounded-xl" />
+          </div>
+          <div className="text-center">
+            <DialogTitle className="font-display text-2xl text-[var(--ink)]">
+              Add Ludo to your Home Screen
+            </DialogTitle>
+            <DialogDescription className="mt-1 font-semibold">
+              Launch faster and keep playing offline.
+            </DialogDescription>
+          </div>
+
+          <ol className="mt-1 space-y-3">
+            {(isIOS
+              ? [
+                  { icon: Share2, text: "Tap the Share button in your browser." },
+                  { icon: Plus, text: "Choose “Add to Home Screen”." },
+                  { icon: Download, text: "Tap Add to install Ludo." },
+                ]
+              : [
+                  { icon: MoreVertical, text: "Open your browser menu." },
+                  { icon: Plus, text: "Choose “Install app” or “Add to Home screen”." },
+                  { icon: Download, text: "Confirm Install." },
+                ]
+            ).map(({ icon: Icon, text }, index) => (
+              <li
+                key={text}
+                className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-[var(--elev-1)]"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ludo-blue-soft)] font-black text-[var(--ludo-blue-dark)]">
+                  {index + 1}
+                </span>
+                <span className="flex-1 text-sm font-bold text-[var(--ink)]">{text}</span>
+                <Icon className="h-5 w-5 shrink-0 text-[var(--ludo-blue)]" />
+              </li>
+            ))}
+          </ol>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
