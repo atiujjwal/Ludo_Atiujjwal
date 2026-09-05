@@ -1,0 +1,367 @@
+import {
+  COLOR_ORDER,
+  SAFE_SQUARES,
+  absoluteIndex,
+  isOnCommon,
+  junctionOf,
+  maxStepsOf,
+} from "./board";
+import type {
+  Color,
+  GameConfig,
+  GameState,
+  HouseRules,
+  LegalMove,
+  Mode,
+  Player,
+  TeamId,
+  Token,
+} from "./types";
+
+export const MODE_COLORS: Record<Mode, Color[]> = {
+  "2P": ["red", "yellow"],
+  "3P": ["red", "green", "yellow"],
+  "4P": ["red", "green", "yellow", "blue"],
+  "2V2": ["red", "green", "yellow", "blue"],
+};
+
+export const TEAMS: Record<Color, TeamId> = {
+  red: "A",
+  yellow: "A",
+  green: "B",
+  blue: "B",
+};
+
+export const DEFAULT_HOUSE_RULES: HouseRules = {
+  exitOnOne: false,
+  secondLap: false,
+  cutReward: false,
+  threeSixesVariant: false,
+};
+
+export function sanitizeNickname(raw: string): string {
+  return raw
+    .replace(/[<>&"'`\\/]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 12);
+}
+
+export function createGame(
+  mode: Mode,
+  houseRules: HouseRules,
+  nicknames: Partial<Record<Color, string>>,
+  chosenColors?: Color[],
+): GameState {
+  const required = MODE_COLORS[mode].length;
+  const picked = (chosenColors ?? []).filter((c, i, a) => a.indexOf(c) === i);
+  const activeColors =
+    mode === "4P" || mode === "2V2" || picked.length !== required ? MODE_COLORS[mode] : picked;
+  const isTeam = mode === "2V2";
+  const seatOrder = COLOR_ORDER.filter((c) => activeColors.includes(c));
+
+  const players: Player[] = seatOrder.map((color, i) => ({
+    id: `p-${color}`,
+    color,
+    nickname: sanitizeNickname(nicknames[color] ?? "") || `Player ${i + 1}`,
+    teamId: isTeam ? TEAMS[color] : null,
+    finished: false,
+    finishRank: null,
+  }));
+
+  const tokens: Token[] = seatOrder.flatMap((color) =>
+    [0, 1, 2, 3].map((i) => ({
+      id: `${color}-${i}`,
+      color,
+      state: "base" as const,
+      steps: 0,
+      secondLapUsed: false,
+      lap: 0,
+    })),
+  );
+
+  const gameConfig: GameConfig = {
+    mode,
+    houseRules: { ...houseRules },
+    activeColors: seatOrder,
+    teams: isTeam ? { ...TEAMS } : {},
+  };
+
+  return {
+    schemaVersion: 1,
+    gameConfig,
+    players,
+    tokens,
+    turn: {
+      currentPlayerId: players[0]!.id,
+      actingForTeammate: false,
+      diceValue: null,
+      consecutiveSixes: 0,
+      owedExtraRoll: false,
+    },
+    phase: "idle",
+    pending: null,
+    legalMoves: [],
+    activeModal: "NONE",
+    modalContext: {},
+    message: null,
+    messageId: 0,
+    rewardMove: false,
+    winnerTeam: null,
+    settings: { soundOn: true, hapticsOn: true, musicOn: false, notificationsOn: false },
+    createdAt: Date.now(),
+    lastSavedAt: Date.now(),
+  };
+}
+
+export function playerById(state: GameState, id: string): Player {
+  return state.players.find((p) => p.id === id)!;
+}
+
+export function teammateColor(state: GameState, color: Color): Color | null {
+  if (state.gameConfig.mode !== "2V2") return null;
+  const team = TEAMS[color];
+  return COLOR_ORDER.find((c) => c !== color && TEAMS[c] === team) ?? null;
+}
+
+export function tokensOf(state: GameState, color: Color): Token[] {
+  return state.tokens.filter((t) => t.color === color);
+}
+
+/** Which color the current player is moving this turn (own, or teammate's in 2v2). */
+export function controllingColor(state: GameState): Color {
+  const player = playerById(state, state.turn.currentPlayerId);
+  const own = tokensOf(state, player.color);
+  if (own.every((t) => t.state === "finished")) {
+    const mate = teammateColor(state, player.color);
+    if (mate) return mate;
+  }
+  return player.color;
+}
+
+export function areTeammates(state: GameState, a: Color, b: Color): boolean {
+  return state.gameConfig.mode === "2V2" && TEAMS[a] === TEAMS[b];
+}
+
+/**
+ * Squares of the shared loop holding two or more tokens of the same colour.
+ * Such a square is a blockade ("wall"): impassable and uncapturable for anyone
+ * who is not the owner (or the owner's 2v2 teammate).
+ */
+export function blockades(state: GameState): Map<number, Color> {
+  const counts = new Map<number, Map<Color, number>>();
+  for (const token of state.tokens) {
+    if (!isOnCommon(token)) continue;
+    const index = absoluteIndex(token.color, token.steps);
+    const byColor = counts.get(index) ?? new Map<Color, number>();
+    byColor.set(token.color, (byColor.get(token.color) ?? 0) + 1);
+    counts.set(index, byColor);
+  }
+  const walls = new Map<number, Color>();
+  for (const [index, byColor] of counts) {
+    for (const [color, n] of byColor) {
+      if (n >= 2) walls.set(index, color);
+    }
+  }
+  return walls;
+}
+
+/** True when `color` may pass through / land on a wall owned by `owner`. */
+export function wallIsFriendly(state: GameState, owner: Color, color: Color): boolean {
+  return owner === color || areTeammates(state, owner, color);
+}
+
+/**
+ * Every shared-loop square the token would traverse for this roll, including
+ * the destination. Squares inside a home column are private and never listed.
+ */
+export function pathSquares(token: Token, dice: number): number[] {
+  const junction = junctionOf(token);
+  const squares: number[] = [];
+  if (token.state === "base") return [absoluteIndex(token.color, 0)];
+  for (let s = token.steps + 1; s <= token.steps + dice; s++) {
+    if (s >= junction) break;
+    squares.push(absoluteIndex(token.color, s));
+  }
+  return squares;
+}
+
+/** A move is blocked when any traversed square (or the destination) is an enemy wall. */
+export function moveIsBlocked(state: GameState, token: Token, dice: number): boolean {
+  const walls = blockades(state);
+  if (walls.size === 0) return false;
+  for (const square of pathSquares(token, dice)) {
+    const owner = walls.get(square);
+    if (owner && !wallIsFriendly(state, owner, token.color)) return true;
+  }
+  return false;
+}
+
+export function getLegalMoves(state: GameState, dice: number, movesOnly = false): LegalMove[] {
+  const color = controllingColor(state);
+  const hr = state.gameConfig.houseRules;
+  const moves: LegalMove[] = [];
+  for (const token of tokensOf(state, color)) {
+    if (token.state === "finished") continue;
+    if (token.state === "base") {
+      if (movesOnly) continue;
+      if (dice === 6 || (hr.exitOnOne && dice === 1)) {
+        if (moveIsBlocked(state, token, dice)) continue;
+        moves.push({ tokenId: token.id, kind: "release" });
+      }
+      continue;
+    }
+    if (token.steps + dice > maxStepsOf(token)) continue;
+    if (moveIsBlocked(state, token, dice)) continue;
+    moves.push({ tokenId: token.id, kind: "move" });
+  }
+  return moves;
+}
+
+/** True when this move would cross the token's home-column junction for the first time. */
+export function triggersSecondLap(state: GameState, token: Token, dice: number): boolean {
+  const hr = state.gameConfig.houseRules;
+  if (!hr.secondLap) return false;
+  if (token.secondLapUsed) return false;
+  if (token.state === "base" || token.state === "finished") return false;
+  const junction = junctionOf(token);
+  return token.steps <= junction - 1 && token.steps + dice >= junction;
+}
+
+/** Apply captures caused by `token` landing. Returns captured token ids. */
+export function resolveCaptures(state: GameState, token: Token): string[] {
+  if (!isOnCommon(token)) return [];
+  const index = absoluteIndex(token.color, token.steps);
+  if (SAFE_SQUARES.has(index)) return [];
+
+  const captured: string[] = [];
+  const victims: { id: string; color: Color }[] = [];
+  for (const color of COLOR_ORDER) {
+    if (color === token.color) continue;
+    if (areTeammates(state, color, token.color)) continue;
+    const occupants = state.tokens.filter(
+      (t) => t.color === color && isOnCommon(t) && absoluteIndex(t.color, t.steps) === index,
+    );
+    // A stack of two or more same-color tokens is immune.
+    if (occupants.length === 1) {
+      const victim = occupants[0]!;
+      victim.state = "base";
+      victim.steps = 0;
+      victim.lap = 0;
+      victim.secondLapUsed = false;
+      captured.push(victim.id);
+      victims.push({ id: victim.id, color: victim.color });
+    }
+  }
+  // Presentation-only breadcrumb so the UI can walk the beaten pieces home.
+  if (victims.length > 0) {
+    state.lastCapture = { id: (state.lastCapture?.id ?? 0) + 1, square: index, tokens: victims };
+  }
+  return captured;
+}
+
+/**
+ * Does the player roll again after the move that just finished?
+ * A six earns another roll, and so does getting a piece Home — granted once,
+ * from the move that completed, so it can never chain off the same piece.
+ */
+export function earnsExtraRoll(opts: {
+  dice: number;
+  reachedHome: boolean;
+  consecutiveSixes: number;
+  isReward: boolean;
+  rewardOwed: boolean;
+  threeSixesVariant: boolean;
+}): boolean {
+  if (opts.reachedHome) return true;
+  if (opts.isReward) return opts.rewardOwed;
+  // HR4: the third six normally ends the turn.
+  if (opts.consecutiveSixes >= 3) return false;
+  return opts.dice === 6;
+}
+
+
+export function refreshTokenState(token: Token): void {
+  if (token.state === "base") return;
+  const junction = junctionOf(token);
+  if (token.steps >= junction + 6) token.state = "finished";
+  else if (token.steps >= junction) token.state = "home_stretch";
+  else token.state = "common";
+}
+
+/** Mark newly-finished players and decide whether the game is over. */
+export function updateStandings(state: GameState): void {
+  const ranksTaken = state.players.filter((p) => p.finishRank !== null).length;
+  let rank = ranksTaken;
+  for (const player of state.players) {
+    if (player.finished) continue;
+    const own = tokensOf(state, player.color);
+    if (own.length && own.every((t) => t.state === "finished")) {
+      player.finished = true;
+      rank += 1;
+      player.finishRank = rank;
+    }
+  }
+
+  if (state.gameConfig.mode === "2V2") {
+    for (const team of ["A", "B"] as TeamId[]) {
+      const colors = COLOR_ORDER.filter((c) => TEAMS[c] === team);
+      const all = state.tokens.filter((t) => colors.includes(t.color));
+      if (all.length === 8 && all.every((t) => t.state === "finished")) {
+        state.winnerTeam = team;
+        state.phase = "over";
+        state.activeModal = "GAME_OVER";
+      }
+    }
+    return;
+  }
+
+  const unfinished = state.players.filter((p) => !p.finished);
+  if (unfinished.length <= 1) {
+    for (const p of unfinished) {
+      rank += 1;
+      p.finished = true;
+      p.finishRank = rank;
+    }
+    state.phase = "over";
+    state.activeModal = "GAME_OVER";
+  }
+}
+
+/** Can this player still act? In 2v2 a finished player plays their teammate's tokens. */
+function canAct(state: GameState, player: Player): boolean {
+  if (!player.finished) return true;
+  if (state.gameConfig.mode !== "2V2") return false;
+  const mate = teammateColor(state, player.color);
+  if (!mate) return false;
+  return tokensOf(state, mate).some((t) => t.state !== "finished");
+}
+
+export function advanceTurn(state: GameState): void {
+  const order = state.players;
+  const index = order.findIndex((p) => p.id === state.turn.currentPlayerId);
+  for (let i = 1; i <= order.length; i++) {
+    const next = order[(index + i) % order.length]!;
+    if (canAct(state, next)) {
+      state.turn.currentPlayerId = next.id;
+      break;
+    }
+  }
+  state.turn.diceValue = null;
+  state.turn.consecutiveSixes = 0;
+  state.turn.owedExtraRoll = false;
+  state.turn.actingForTeammate = controllingColor(state) !== playerById(state, state.turn.currentPlayerId).color;
+  state.legalMoves = [];
+  state.pending = null;
+  state.rewardMove = false;
+  state.phase = "idle";
+}
+
+export function rollDie(): number {
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return (buf[0]! % 6) + 1;
+  }
+  return Math.floor(Math.random() * 6) + 1;
+}
