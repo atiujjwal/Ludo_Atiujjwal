@@ -10,6 +10,8 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import { AppThemeProvider } from "@/components/AppThemeProvider";
+import { THEME_BOOTSTRAP, THEME_COLORS } from "@/lib/app-theme";
 import { GameProvider } from "@/lib/ludo/store";
 import { registerOfflineSupport } from "../lib/ludo/register-sw";
 import { Toaster } from "../components/ui/sonner";
@@ -81,7 +83,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         name: "description",
         content: "A colourful offline Ludo game for 2–4 players sharing one device.",
       },
-      { name: "theme-color", content: "#171815" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-title", content: "Ludo" },
       { property: "og:type", content: "website" },
@@ -106,8 +107,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" data-appearance="royal">
+    <html
+      lang="en"
+      data-appearance="royal"
+      data-theme="dark"
+      className="dark"
+      suppressHydrationWarning
+    >
       <head>
+        <meta name="theme-color" content={THEME_COLORS.dark} suppressHydrationWarning />
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
         <HeadContent />
       </head>
       <body>
@@ -122,14 +131,16 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <GameProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-        <OfflineBanner />
-        <Toaster position="bottom-center" />
-      </GameProvider>
-    </QueryClientProvider>
+    <AppThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <GameProvider>
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+          <Outlet />
+          <OfflineBanner />
+          <Toaster position="bottom-center" />
+        </GameProvider>
+      </QueryClientProvider>
+    </AppThemeProvider>
   );
 }
 

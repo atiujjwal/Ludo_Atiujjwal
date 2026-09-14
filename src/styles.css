@@ -2,6 +2,7 @@
 @source "../src";
 @import "tw-animate-css";
 @import "./royal.css";
+@import "./app-palettes.css";
 
 @custom-variant dark (&:is(.dark *));
 

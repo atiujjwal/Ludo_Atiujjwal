@@ -51,17 +51,25 @@ Service workers and browser installation prompts require a secure context in pro
 
 ## Royal appearance
 
+Two-player games always seat the first selected colour top-left and the second bottom-right. A shared, immutable layout maps identities to yard, start, home-lane and finishing geometry; player cards and dice follow the same seats. Three-player, four-player and team layouts retain their default coordinates. Resumed two-player games use this seating too: token progress, colours and save data remain intact, but physical positions and shared-square relationships can change. See [DIAGONAL_SEATING_VERIFICATION.md](./DIAGONAL_SEATING_VERIFICATION.md) for coverage and pending device checks.
+
 Royal is the default and only shipped appearance. `src/lib/ludo/theme.ts` defines independent `BoardTheme`, `TokenSkin`, and `DiceSkin` interfaces and presentation-only defaults. Artwork uses CSS gradients and small original SVG lotus, peacock, paisley and jali details, with system fonts; the reference image is not shipped. No external font, rendering, or animation dependency is needed.
 
-Board coordinates are unchanged. Saves still use `ludo:save:v1`. The board includes bounded stacks and unnumbered, 44px-minimum legal-piece controls with individual accessibility labels. Motion is brief, pauses when hidden, and respects reduced-motion preferences.
+The shared 52-cell track is unchanged. Each private lane contains five cells, followed by an exact-roll step into its centre triangle. Finished full-size counters settle into fixed positions before bonuses or victory resolve. Saves still use `ludo:save:v1` and schema version 1; `homePathVersion: 2` marks the one-time legacy conversion. An unfinished piece on the removed sixth lane cell moves to the fifth, retaining one step to finish. The board includes bounded stacks and unnumbered, 44px-minimum legal-piece controls with individual accessibility labels. Motion is brief and respects reduced-motion preferences.
 
-Setup's **Move suggestions** switch defaults OFF for each new game and shares one saved preference with the board bell and settings switch. OFF hides turn tips, game-guidance toasts, destination/Second Lap previews, selectable-piece glow, extra pawn controls and the dice invitation pulse. Direct legal board selection, turn indicators, movement feedback and required dialogs remain available. ON restores current guidance without replaying muted notices. Resume and rematch retain the preference; older saves use their explicit suggestion value first, otherwise their legacy notification preference, otherwise OFF. Stack rearrangement is instantaneous within its square; only the selected moving pawn animates between squares.
+Setup's **Move suggestions** switch defaults OFF for each new game and shares one saved preference with the board bell and settings switch. OFF hides turn tips, game-guidance toasts, destination/Second Lap previews, extra token controls and the dice invitation pulse. Legal-piece highlighting, direct board selection, turn indicators, movement/capture feedback and required dialogs remain available in both states. ON restores current guidance without replaying muted notices. Resume and rematch retain the preference; older saves use their explicit suggestion value first, otherwise their legacy notification preference, otherwise OFF. Stack rearrangement is instantaneous within its square; only the selected moving counter animates between squares.
 
 Every opponent capture earns another roll. Own pieces, teammates and safe-square occupants cannot be cut. With **Cut Reward** enabled, release or move-six happens before that earned roll; choosing Roll again takes the same roll immediately, without doubling it. With **Three 6s Variant** enabled, a played third six that captures or reaches home earns a roll and starts a fresh six streak. Without that variant, the third six is skipped before movement.
 
 See [ROYAL_VERIFICATION.md](./ROYAL_VERIFICATION.md) for measured build sizes, automated coverage, and device checks still pending.
 
 See [STACKING_GUIDANCE_VERIFICATION.md](./STACKING_GUIDANCE_VERIFICATION.md) for the stable-stack and unified-guidance regression results and pending browser checks.
+
+Capture feedback uses `/crying_teddy.gif`, with `/crying_teddy-still.png` for reduced motion. Each victim's corner displays one temporary overlay for 2.5 seconds after image loading, independent of move suggestions. No crying sound is played or fetched. The teddy assets are revisioned and precached for offline games; the original source assets are retained without duplicate precaching.
+
+The winner dialog includes `/happy_teddy.gif` for both individual and team victories. After five seconds of loaded playback it switches to `/happy_teddy-still.png`; reduced motion uses that static frame immediately. Both assets are precached, and the celebration adds no sound or gameplay actions.
+
+See [HOME_PATH_CAPTURE_VERIFICATION.md](./HOME_PATH_CAPTURE_VERIFICATION.md) for regression results and pending device checks.
 
 ## Technology
 

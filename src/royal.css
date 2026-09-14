@@ -1,55 +1,8 @@
-/* Project-owned CSS/SVG craftsmanship: no image textures or remote fonts. */
-:root[data-appearance="royal"] {
-  color-scheme: dark;
-  --font-display: Georgia, "Times New Roman", serif;
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --background: #171815;
-  --board: #24251f;
-  --board-edge: #ad905c;
-  --ink: #f2e8d2;
-  --safe: #3e3828;
-  --elev-1: 0 3px 8px #0005, inset 0 1px #e9ce9120;
-  --elev-2: 0 8px 20px -8px #000b;
-  --elev-3: 0 16px 32px -12px #000c;
-  --foreground: #f2e8d2;
-  --card: #24251f;
-  --card-foreground: #f2e8d2;
-  --popover: #292920;
-  --popover-foreground: #f2e8d2;
-  --primary: #d6b879;
-  --primary-foreground: #241a0b;
-  --secondary: #343326;
-  --secondary-foreground: #f2e8d2;
-  --muted: #302f26;
-  --muted-foreground: #bdb49f;
-  --accent: #423b28;
-  --accent-foreground: #fff0cb;
-  --destructive: #ef8492;
-  --border: #63543a;
-  --input: #726243;
-  --ring: #e9ce91;
-  --ludo-red: #ad3955;
-  --ludo-red-light: #ef9aae;
-  --ludo-red-dark: #66192e;
-  --ludo-red-soft: #38202b;
-  --ludo-green: #329879;
-  --ludo-green-light: #8cd6b8;
-  --ludo-green-dark: #0c4939;
-  --ludo-green-soft: #19372c;
-  --ludo-blue: #507bc4;
-  --ludo-blue-light: #a6c7ff;
-  --ludo-blue-dark: #1a376c;
-  --ludo-blue-soft: #232e43;
-  --ludo-yellow: #d2a044;
-  --ludo-yellow-light: #f5d992;
-  --ludo-yellow-dark: #75501c;
-  --ludo-yellow-soft: #40341e;
-  --shadow-card: 0 8px 24px -12px #000b, inset 0 1px #e9ce9120;
-  --shadow-lifted: 0 12px 26px -12px #000c;
-}
+/* Project-owned CSS/SVG craftsmanship; palettes are shared with fallback pages. */
 html[data-appearance="royal"] body {
   min-width: 280px;
-  background: radial-gradient(ellipse at 50% 0, #60503135, transparent 65%), var(--background);
+  background:
+    radial-gradient(ellipse at 50% 0, var(--royal-ambient-glow), transparent 65%), var(--background);
 }
 [data-appearance="royal"] h1,
 [data-appearance="royal"] h2,
@@ -62,7 +15,7 @@ a {
 }
 button:focus-visible,
 a:focus-visible {
-  outline: 3px solid #ffe5a0;
+  outline: 3px solid var(--royal-focus);
   outline-offset: 3px;
 }
 /* Defaults belong in the base layer so page spacing utilities can override them. */
@@ -93,30 +46,37 @@ a:focus-visible {
   position: static;
 }
 .royal-eyebrow {
-  color: #d6b879;
+  color: var(--royal-eyebrow);
   font-size: 10px;
   letter-spacing: 0.28em;
   text-transform: uppercase;
 }
 .royal-menu-title {
-  color: #efdbab;
-  text-shadow: 0 2px 1px #0008;
+  color: var(--royal-title);
+  text-shadow: 0 2px 1px var(--royal-shadow-medium);
 }
 .royal-divider {
   width: 80px;
   height: 1px;
   margin: 12px auto;
-  background: linear-gradient(90deg, transparent, #d6b879, transparent);
+  background: linear-gradient(90deg, transparent, var(--royal-eyebrow), transparent);
 }
 .royal-board {
   width: 100%;
   aspect-ratio: 1;
   padding: 1.3%;
   border-radius: 5%;
-  background: linear-gradient(135deg, #fff0ba, #99763d 22%, #f0d596 45%, #775329 78%, #d1b576);
+  background: linear-gradient(
+    135deg,
+    var(--royal-brass-highlight),
+    var(--royal-brass-mid) 22%,
+    var(--royal-brass-sheen) 45%,
+    var(--royal-brass-dark) 78%,
+    var(--royal-brass-end)
+  );
   box-shadow:
-    inset 0 0 0 1px #e9d4a0,
-    0 15px 32px -14px #000c;
+    inset 0 0 0 1px var(--royal-brass-edge),
+    0 15px 32px -14px var(--royal-shadow-deep);
 }
 .royal-grid {
   position: relative;
@@ -124,7 +84,7 @@ a:focus-visible {
   height: 100%;
   overflow: hidden;
   border-radius: 3.8%;
-  background: #171b1c;
+  background: var(--royal-grid-surface);
   container-type: inline-size;
 }
 .royal-artwork,
@@ -134,24 +94,46 @@ a:focus-visible {
   pointer-events: none;
 }
 .royal-zone {
+  --royal-motif: var(--royal-house-ornament);
   position: absolute;
-  background-color: var(--enamel);
+  background-color: var(--royal-house-face);
   background-image:
-    radial-gradient(ellipse at 30% 20%, #ffffff12, transparent 55%),
-    repeating-linear-gradient(32deg, #00000005 0 1px, #ffffff05 1px 3px),
-    radial-gradient(ellipse, transparent 40%, #0008);
+    radial-gradient(ellipse at 30% 18%, var(--royal-house-highlight), transparent 65%),
+    repeating-linear-gradient(
+      32deg,
+      var(--royal-fabric-thread-dark) 0 1px,
+      var(--royal-fabric-thread-light) 1px 3px
+    ),
+    linear-gradient(155deg, transparent 40%, var(--royal-house-shade));
   box-shadow:
-    inset 0 0 0 max(1px, 0.24cqw) #c4a66e,
-    inset 0 0 16px #0008;
+    inset 0 0 0 max(1px, 0.24cqw) var(--royal-zone-rim),
+    inset 0 0 16px var(--royal-shadow-medium);
+}
+.royal-zone[data-color="red"] {
+  --royal-house-face: var(--royal-house-red);
+}
+.royal-zone[data-color="green"] {
+  --royal-house-face: var(--royal-house-green);
+}
+.royal-zone[data-color="blue"] {
+  --royal-house-face: var(--royal-house-blue);
+}
+.royal-zone[data-color="yellow"] {
+  --royal-house-face: var(--royal-house-yellow);
+  --royal-motif: var(--royal-house-yellow-ink);
+  --royal-courtyard-rim: var(--royal-house-yellow-ink);
+}
+.royal-socket[data-color="yellow"] {
+  border-color: var(--royal-house-yellow-ink);
 }
 .royal-courtyard {
   position: absolute;
   inset: 15%;
-  border: max(1px, 0.32cqw) solid #cfb47a;
+  border: max(1px, 0.32cqw) solid var(--royal-courtyard-rim);
   border-radius: 2%;
   box-shadow:
-    0 2px 3px #0008,
-    inset 0 1px 3px #0008;
+    0 2px 3px var(--royal-shadow-medium),
+    inset 0 1px 3px var(--royal-shadow-medium);
 }
 .royal-motif {
   position: absolute;
@@ -159,28 +141,32 @@ a:focus-visible {
   height: 25%;
   top: 37.5%;
   left: 37.5%;
-  color: #dec18a;
-  opacity: 0.75;
+  color: var(--royal-motif);
+  opacity: 1;
 }
 .royal-socket {
   position: absolute;
   border-radius: 50%;
-  border: max(1px, 0.25cqw) solid #c2a371;
-  background: radial-gradient(circle at 60% 70%, #ffffff09, #0009);
+  border: max(1px, 0.25cqw) solid var(--royal-socket-rim);
+  background: radial-gradient(
+    circle at 60% 70%,
+    var(--royal-socket-highlight),
+    var(--royal-socket-shade)
+  );
   box-shadow:
-    inset 0 2px 3px #0008,
-    0 1px 1px #f9df9e55;
+    inset 0 2px 3px var(--royal-shadow-medium),
+    0 1px 1px var(--royal-socket-glint);
   transform: scale(0.94);
 }
 .royal-cell {
   position: absolute;
   display: grid;
   place-items: center;
-  border: max(0.5px, 0.12cqw) solid #c7aa70;
+  border: max(0.5px, 0.12cqw) solid var(--royal-cell-edge);
   background:
-    linear-gradient(135deg, transparent 38%, #d8e1e211 40%, transparent 42%),
-    linear-gradient(25deg, transparent 56%, #f0eade14 58%, transparent 61%),
-    linear-gradient(145deg, #35383a, #222628);
+    linear-gradient(135deg, transparent 38%, var(--royal-marble-vein) 40%, transparent 42%),
+    linear-gradient(25deg, transparent 56%, var(--royal-marble-glint) 58%, transparent 61%),
+    linear-gradient(145deg, var(--royal-marble-top), var(--royal-marble-bottom));
 }
 .royal-cell:nth-child(3n) {
   background-position:
@@ -189,21 +175,27 @@ a:focus-visible {
     0 0;
 }
 .royal-cell > span {
-  color: #e4c88d;
+  color: var(--royal-safe-ink);
   font-size: 3cqw;
   line-height: 1;
 }
 .royal-safe {
-  box-shadow: inset 0 0 0 1px #eed08b;
-  background-color: #3e3828;
+  box-shadow: inset 0 0 0 1px var(--royal-safe-edge);
+  background: linear-gradient(var(--royal-marble-glint), transparent), var(--royal-safe-surface);
 }
 .royal-home,
 .royal-cell[data-start] {
-  background: radial-gradient(ellipse at 30% 20%, #ffffff15, #0005), var(--enamel);
+  background:
+    radial-gradient(ellipse at 30% 20%, var(--royal-home-highlight), var(--royal-home-shade)),
+    var(--enamel);
+}
+.royal-home > span,
+.royal-cell[data-start] > span {
+  color: var(--enamel-ink, var(--royal-safe-ink));
 }
 .royal-center {
   position: absolute;
-  border: 1px solid #e0c080;
+  border: 1px solid var(--royal-center-edge);
 }
 .royal-center svg {
   width: 100%;
@@ -214,35 +206,35 @@ a:focus-visible {
   pointer-events: none;
 }
 .royal-zone-state[data-unused="true"] {
-  background: #17181588;
+  background: var(--royal-unused-overlay);
 }
 .royal-zone-state[data-active="true"]::after {
   content: "";
   position: absolute;
   inset: 14%;
-  border: 2px solid #ffe4aa;
-  box-shadow: 0 0 8px #ffdea655;
+  border: 2px solid var(--royal-turn-edge);
+  box-shadow: 0 0 8px var(--royal-turn-glow);
   animation: royal-arrival 0.55s ease-out;
 }
 .royal-blockade {
   position: absolute;
   pointer-events: none;
-  z-index: 5;
-  border: 2px double #efcd8b;
-  box-shadow: inset 0 0 0 1px #241c12;
+  z-index: 36;
+  border: 3px double var(--royal-blockade-edge);
+  box-shadow: inset 0 0 0 1px var(--royal-blockade-inner);
 }
 .royal-destination {
   position: absolute;
   pointer-events: none;
   z-index: 8;
-  border: 2px solid #fff0ad;
+  border: 2px solid var(--royal-destination-edge);
   border-radius: 15%;
-  background: #f4d67d25;
+  background: var(--royal-destination-fill);
 }
 .royal-destination[data-alternative="true"] {
   border-style: dashed;
-  background: #dbbaff20;
-  border-color: #dbc7ff;
+  background: var(--royal-alternate-fill);
+  border-color: var(--royal-alternate-ink);
 }
 .royal-piece-position {
   position: absolute;
@@ -268,74 +260,193 @@ a:focus-visible {
 .royal-piece-hit * {
   pointer-events: none;
 }
-.royal-piece-position[data-interactive="true"],
-.royal-piece-position:focus-within {
+.royal-piece-position[data-interactive="true"] {
   z-index: 30;
+}
+.royal-piece-position:focus-within {
+  z-index: 34;
 }
 .royal-piece-position[data-moving="true"] {
   z-index: 35;
   transition: transform 120ms linear;
 }
+.royal-piece-hit[data-settling="true"] {
+  transition: transform 150ms ease-out;
+}
+
+.royal-crying-yard {
+  position: absolute;
+  pointer-events: none;
+}
+.royal-crying-teddy {
+  position: absolute;
+  left: 34%;
+  top: 34%;
+  display: block;
+  width: 32%;
+  aspect-ratio: 1;
+  border: 2px solid var(--border);
+  border-radius: 22%;
+  overflow: hidden;
+  box-shadow: 0 3px 12px var(--royal-shadow-medium);
+  animation: royal-crying 150ms ease-out both;
+}
+.royal-crying-teddy img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.royal-happy-teddy {
+  display: block;
+  width: min(112px, 28vw);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 2px solid var(--royal-panel-edge);
+  border-radius: 24%;
+  box-shadow: 0 3px 12px var(--royal-shadow-medium);
+  pointer-events: none;
+}
+.royal-happy-teddy img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+@keyframes royal-crying {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .royal-crying-teddy {
+    animation: none;
+  }
+}
 .royal-stack-outline {
   position: absolute;
   pointer-events: none;
-  z-index: 6;
-  border: 1px solid #ead6a680;
-  border-radius: 18%;
-  box-shadow: inset 0 0 0 2px #211e1860;
+  z-index: 36;
+  border: 1px solid var(--royal-stack-edge);
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 2px var(--royal-stack-shadow);
+}
+.royal-stack-outline[data-protected="true"] {
+  border: 1px dashed var(--royal-protected-edge);
 }
 .royal-token {
   display: inline-grid;
+  place-items: center;
   position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
   aspect-ratio: 1;
   flex-shrink: 0;
   vertical-align: middle;
+  isolation: isolate;
+  border: 1px solid var(--royal-counter-edge);
+  border-radius: 50%;
+  background: var(--token-enamel);
+  box-shadow:
+    inset 0 0 0 1px var(--royal-counter-rim),
+    inset 0 -3px 0 var(--royal-counter-shadow);
 }
 .royal-token svg {
+  display: block;
   height: 100%;
   width: 100%;
-  overflow: visible;
+  min-width: 0;
+  min-height: 0;
+  fill: var(--token-ink);
+  pointer-events: none;
+}
+.royal-piece-hit {
+  padding: 8%;
+}
+.royal-piece-hit[data-stacked="true"] {
+  /* Match the visible counter: transparent corners must not steal taps
+     from an exposed counter underneath. Padding and size stay unchanged. */
+  clip-path: circle(42% at 50% 50%);
+}
+.royal-token[data-section="true"] {
+  aspect-ratio: auto;
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--royal-section-rim);
 }
 .royal-token[data-visual="ghost"] {
   opacity: 0.5;
 }
 .royal-token[data-visual="home"] {
-  opacity: 0.85;
+  box-shadow: inset 0 0 0 1px var(--royal-finished-rim);
 }
-.royal-token[data-visual="safe"]::after {
-  content: "";
-  position: absolute;
-  inset: 4%;
-  border: 1px solid #f4dba3;
-  border-radius: 50%;
-  pointer-events: none;
+/* Lift only the artwork, never the cell transform, counter size or hit region.
+   A steady raised state avoids perpetual motion while waiting for a choice. */
+.royal-token[data-visual="selectable"] {
+  transform: translateY(-4%);
+  background-image: radial-gradient(
+    ellipse at 32% 18%,
+    var(--royal-fabric-highlight),
+    transparent 65%
+  );
+  box-shadow:
+    inset 0 1px 0 var(--royal-selection-edge),
+    inset 0 0 0 1px var(--royal-counter-rim),
+    inset 0 -4px 0 var(--royal-counter-shadow),
+    0 3px 0 var(--royal-selection-separation),
+    0 5px 5px -2px var(--royal-shadow-deep);
+}
+.royal-token[data-visual="selectable"] svg {
+  transform: translateY(-2%);
+}
+.royal-piece-hit[data-stacked="true"] .royal-token[data-visual="selectable"] {
+  /* Keep clipped, overlapping circles in their exact footprint. Raised face
+     shading and a lifted symbol provide the same depth without clipped rims. */
+  transform: none;
 }
 .royal-selection-ring {
   position: absolute;
-  inset: 1%;
-  border: 2px solid #fff5c7;
-  border-radius: 50%;
-  box-shadow: 0 0 5px #ffdc85;
-  animation: royal-ring 1.2s ease-in-out 3;
+  inset: 0;
+  border: 2px solid var(--royal-selection-edge);
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 1px var(--royal-selection-separation),
+    0 0 0 1px var(--royal-selection-separation);
   pointer-events: none;
 }
-.royal-wall-mark {
+.royal-selection-ring::after {
+  content: "";
   position: absolute;
-  bottom: 4%;
-  right: 3%;
-  color: #21190e;
-  background: #f4d99b;
-  border-radius: 3px;
-  padding: 0 2px;
-  font: bold 9px system-ui;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 4px 1px var(--royal-selection-glow);
+  opacity: 0.45;
+  animation: royal-token-ready 650ms ease-in-out 2;
+  pointer-events: none;
+}
+.royal-piece-hit:focus-visible {
+  outline: none;
+}
+.royal-piece-hit:focus-visible .royal-token {
+  outline: 2px dashed var(--royal-selection-edge);
+  outline-offset: -4px;
+}
+.royal-piece-hit:active:not(:disabled) .royal-token {
+  transform: none;
+  box-shadow: inset 0 0 0 2px var(--royal-selection-edge);
 }
 .royal-dice {
-  border: 2px solid #c3a36b;
-  color: #302417;
-  background: linear-gradient(135deg, #fff9e9, #dfcda7);
+  border: 2px solid var(--royal-dice-rim);
+  color: var(--royal-dice-ink);
+  background: linear-gradient(135deg, var(--royal-dice-top), var(--royal-dice-bottom));
   box-shadow:
-    inset 0 -3px 0 #b4a07d,
-    0 3px 8px #0006;
+    inset 0 -3px 0 var(--royal-dice-depth),
+    0 3px 8px var(--royal-shadow-soft);
 }
 .royal-dice[data-lit="true"] {
   outline: 2px solid var(--dice-accent);
@@ -351,12 +462,12 @@ a:focus-visible {
   animation: royal-ring 1.2s ease-in-out 2;
 }
 .royal-dice-pip {
-  background: radial-gradient(circle at 35% 30%, #715632, #281d12);
-  box-shadow: inset 0 1px 1px #0006;
+  background: radial-gradient(circle at 35% 30%, var(--royal-pip-highlight), var(--royal-pip-ink));
+  box-shadow: inset 0 1px 1px var(--royal-shadow-soft);
 }
 .royal-player-panel {
-  background: linear-gradient(130deg, #3b3829, #24251f);
-  border: 1px solid #80704a;
+  background: linear-gradient(130deg, var(--royal-panel-top), var(--royal-panel-bottom));
+  border: 1px solid var(--royal-panel-edge);
 }
 .royal-move-picker {
   display: flex;
@@ -373,20 +484,20 @@ a:focus-visible {
   min-height: 44px;
   min-width: 64px;
   padding: 4px 7px;
-  border: 1px solid #bda16a;
+  border: 1px solid var(--royal-move-edge);
   border-radius: 12px;
-  background: #302c20;
-  color: #f6e4bd;
+  background: var(--royal-move-surface);
+  color: var(--royal-move-ink);
   font-size: 12px;
   font-weight: 600;
 }
 .royal-move-picker button:active {
-  background: #50422a;
+  background: var(--royal-move-active);
 }
 .royal-route-legend {
   text-align: center;
   font-size: 11px;
-  color: #dbc7ff;
+  color: var(--royal-alternate-ink);
   margin-top: 8px;
 }
 .royal-effects {
@@ -394,13 +505,13 @@ a:focus-visible {
 }
 .royal-capture {
   position: absolute;
-  border: 3px solid #ffe1a0;
+  border: 3px solid var(--royal-capture-edge);
   border-radius: 50%;
   animation: royal-burst 0.55s ease-out forwards;
 }
 .royal-home-burst {
   position: absolute;
-  color: #ffe5a0;
+  color: var(--royal-focus);
   text-align: center;
   font-size: 5cqw;
   animation: royal-burst 0.8s ease-out forwards;
@@ -439,7 +550,7 @@ a:focus-visible {
 .royal-offline-status button {
   min-height: 44px;
   padding: 6px 12px;
-  color: #edcf91;
+  color: var(--royal-offline-link);
   text-decoration: underline;
 }
 @media (min-width: 1024px) {
@@ -477,6 +588,11 @@ a:focus-visible {
   50% {
     opacity: 0.72;
     transform: scale(0.96);
+  }
+}
+@keyframes royal-token-ready {
+  50% {
+    opacity: 1;
   }
 }
 @keyframes royal-arrival {

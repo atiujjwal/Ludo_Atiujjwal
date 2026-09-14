@@ -246,9 +246,10 @@ describe("seating and extra rolls", () => {
     }
   });
 
-  it("keeps opposite seats in a two-player game", () => {
-    const game = createGame("2P", { ...DEFAULT_HOUSE_RULES }, {}, ["green", "blue"]);
-    expect(game.players.map((p) => p.color).sort()).toEqual(["blue", "green"]);
+  it("keeps any claimed two-player colours in claim order", () => {
+    const game = createGame("2P", { ...DEFAULT_HOUSE_RULES }, {}, ["green", "red"]);
+    expect(game.players.map((p) => p.color)).toEqual(["green", "red"]);
+    expect(game.turn.currentPlayerId).toBe("p-green");
   });
 
   it("grants another roll when a piece reaches home", () => {

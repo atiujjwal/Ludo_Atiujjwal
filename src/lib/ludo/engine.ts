@@ -1,11 +1,13 @@
 import {
   COLOR_ORDER,
-  OPPOSITE_COLOR,
   SAFE_SQUARES,
   absoluteIndex,
+  boardLayoutOf,
+  DEFAULT_BOARD_LAYOUT,
   isOnCommon,
   junctionOf,
   maxStepsOf,
+  type Corner,
 } from "./board";
 import type {
   Color,
@@ -56,9 +58,7 @@ export function createGame(
 ): GameState {
   const required = MODE_COLORS[mode].length;
   const picked = (chosenColors ?? []).filter((c, i, a) => a.indexOf(c) === i);
-  const validChoice =
-    picked.length === required &&
-    (mode !== "2P" || (picked[0] !== undefined && OPPOSITE_COLOR[picked[0]] === picked[1]));
+  const validChoice = picked.length === required;
   const activeColors = mode === "4P" || mode === "2V2" || !validChoice ? MODE_COLORS[mode] : picked;
   const isTeam = mode === "2V2";
   // In selectable modes, claim order is turn order: the first pick starts.
@@ -93,6 +93,7 @@ export function createGame(
 
   return {
     schemaVersion: 1,
+    homePathVersion: 2,
     gameConfig,
     players,
     tokens,
@@ -126,6 +127,10 @@ export function createGame(
 
 export function playerById(state: GameState, id: string): Player {
   return state.players.find((p) => p.id === id)!;
+}
+export function playerAtCorner(state: GameState, corner: Corner): Player | null {
+  const color = boardLayoutOf(state.gameConfig).cornerToColor[corner];
+  return state.players.find((player) => player.color === color) ?? null;
 }
 
 export function teammateColor(state: GameState, color: Color): Color | null {
@@ -161,10 +166,11 @@ export function areTeammates(state: GameState, a: Color, b: Color): boolean {
  * walls.
  */
 export function blockades(state: GameState): Map<number, Color> {
+  const layout = boardLayoutOf(state.gameConfig);
   const counts = new Map<number, Map<Color, number>>();
   for (const token of state.tokens) {
     if (!isOnCommon(token)) continue;
-    const index = absoluteIndex(token.color, token.steps);
+    const index = absoluteIndex(token.color, token.steps, layout);
     if (SAFE_SQUARES.has(index)) continue;
     const byColor = counts.get(index) ?? new Map<Color, number>();
     byColor.set(token.color, (byColor.get(token.color) ?? 0) + 1);
@@ -188,14 +194,14 @@ export function wallIsFriendly(state: GameState, owner: Color, color: Color): bo
  * Every shared-loop square the token would traverse for this roll, including
  * the destination. Squares inside a home column are private and never listed.
  */
-export function pathSquares(token: Token, dice: number): number[] {
+export function pathSquares(token: Token, dice: number, layout = DEFAULT_BOARD_LAYOUT): number[] {
   const junction = junctionOf(token);
   const squares: number[] = [];
   if (!Number.isInteger(dice) || dice < 1 || dice > 6) return squares;
-  if (token.state === "base") return [absoluteIndex(token.color, 0)];
+  if (token.state === "base") return [absoluteIndex(token.color, 0, layout)];
   for (let s = token.steps + 1; s <= token.steps + dice; s++) {
     if (s >= junction) break;
-    squares.push(absoluteIndex(token.color, s));
+    squares.push(absoluteIndex(token.color, s, layout));
   }
   return squares;
 }
@@ -204,7 +210,7 @@ export function pathSquares(token: Token, dice: number): number[] {
 export function moveIsBlocked(state: GameState, token: Token, dice: number): boolean {
   const walls = blockades(state);
   if (walls.size === 0) return false;
-  for (const square of pathSquares(token, dice)) {
+  for (const square of pathSquares(token, dice, boardLayoutOf(state.gameConfig))) {
     const owner = walls.get(square);
     if (owner && !wallIsFriendly(state, owner, token.color)) return true;
   }
@@ -253,7 +259,8 @@ export function canContinueSecondLap(state: GameState, token: Token, dice: numbe
 /** Apply captures caused by `token` landing. Returns captured token ids. */
 export function resolveCaptures(state: GameState, token: Token): string[] {
   if (!isOnCommon(token)) return [];
-  const index = absoluteIndex(token.color, token.steps);
+  const layout = boardLayoutOf(state.gameConfig);
+  const index = absoluteIndex(token.color, token.steps, layout);
   if (SAFE_SQUARES.has(index)) return [];
 
   const captured: string[] = [];
@@ -262,7 +269,8 @@ export function resolveCaptures(state: GameState, token: Token): string[] {
     if (color === token.color) continue;
     if (areTeammates(state, color, token.color)) continue;
     const occupants = state.tokens.filter(
-      (t) => t.color === color && isOnCommon(t) && absoluteIndex(t.color, t.steps) === index,
+      (t) =>
+        t.color === color && isOnCommon(t) && absoluteIndex(t.color, t.steps, layout) === index,
     );
     // A stack of two or more same-color tokens is immune.
     if (occupants.length === 1) {
@@ -307,7 +315,7 @@ export function earnsExtraRoll(opts: {
 export function refreshTokenState(token: Token): void {
   if (token.state === "base") return;
   const junction = junctionOf(token);
-  if (token.steps >= junction + 6) token.state = "finished";
+  if (token.steps >= maxStepsOf(token)) token.state = "finished";
   else if (token.steps >= junction) token.state = "home_stretch";
   else token.state = "common";
 }

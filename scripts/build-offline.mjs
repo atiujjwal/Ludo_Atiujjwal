@@ -68,8 +68,14 @@ try {
       const relative = prefix + "/" + entry.name;
       if (entry.isDirectory()) result.push(...(await files(resolve(dir, entry.name), relative)));
       else if (
-        /\.(?:js|css|html|png|ico|svg|webp|woff2?|webmanifest)$/.test(entry.name) &&
-        relative !== "/sw.js"
+        /\.(?:js|css|html|png|ico|svg|webp|gif|mp3|woff2?|webmanifest)$/.test(entry.name) &&
+        relative !== "/sw.js" &&
+        ![
+          "/audio/crying_audio.mp3",
+          "/animation/crying_teddy.gif",
+          "/animation/crying_teddy-still.png",
+          "/animation/happy_teddy.gif",
+        ].includes(relative)
       )
         result.push(relative);
     }

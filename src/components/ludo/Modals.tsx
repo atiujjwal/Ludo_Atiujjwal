@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Crown } from "lucide-react";
 
 import { Token } from "@/components/ludo/Token";
+import { HappyTeddy } from "@/components/ludo/HappyTeddy";
 import { COLOR_ORDER } from "@/lib/ludo/board";
 import { PALETTE } from "@/lib/ludo/palette";
 
@@ -40,6 +41,13 @@ export function GameModals({ state, dispatch }: Props) {
   if (state.activeModal === "SECOND_LAP_CHOICE") {
     const { tokenId, dice } = state.modalContext as { tokenId?: string; dice?: number };
     const token = state.tokens.find((candidate) => candidate.id === tokenId);
+    const canEnter = Boolean(
+      token &&
+      dice &&
+      getLegalMoves(state, dice, state.modalContext["isReward"] === true).some(
+        (move) => move.tokenId === tokenId,
+      ),
+    );
     const canContinue = Boolean(token && dice && canContinueSecondLap(state, token, dice));
     return (
       <Sheet title="Take another lap?">
@@ -49,6 +57,7 @@ export function GameModals({ state, dispatch }: Props) {
         </p>
         <Button
           className="h-12 w-full"
+          disabled={!canEnter}
           onClick={() => {
             playSfx("modalClose");
             dispatch({ type: "CHOOSE_ENTER_HOME" });
@@ -153,6 +162,7 @@ export function GameModals({ state, dispatch }: Props) {
 
     return (
       <Sheet title={teamWin ? "Team victory!" : "We have a winner!"}>
+        <HappyTeddy />
         <div aria-hidden className="pointer-events-none fixed inset-0 z-[60] overflow-hidden">
           {Array.from({ length: 12 }).map((_, i) => (
             <span

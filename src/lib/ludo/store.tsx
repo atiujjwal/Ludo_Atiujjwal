@@ -8,7 +8,8 @@ import {
   type ReactNode,
 } from "react";
 
-import { junctionOf } from "./board";
+import { junctionOf, maxStepsOf } from "./board";
+import { normalizeHomePath } from "./home-path-migration";
 import {
   advanceTurn,
   canContinueSecondLap,
@@ -48,6 +49,7 @@ export type Action =
   | { type: "CUT_MOVE6" }
   | { type: "CUT_EXTRA_ROLL" }
   | { type: "HOP" }
+  | { type: "ADVANCE_FINISH"; tokenId: string }
   | { type: "FINISH_MOVE" }
   | { type: "SET_MODAL"; modal: GameState["activeModal"] }
   | {
@@ -112,6 +114,25 @@ function startMoveOrAsk(state: Draft, tokenId: string, dice: number, isReward: b
   beginMove(state, tokenId, dice, isReward);
 }
 
+function noLegalRoll(state: Draft, dice: number) {
+  state.pending = null;
+  state.legalMoves = [];
+  state.activeModal = "NONE";
+  state.modalContext = {};
+  state.phase = "idle";
+  if (state.rewardMove) {
+    state.rewardMove = false;
+    endOrContinueTurn(state);
+  } else if (dice === 6 && state.turn.consecutiveSixes < 3) {
+    note(state, "No legal move for a 6 — roll again.");
+    state.turn.diceValue = null;
+  } else {
+    note(state, `No legal move for a ${dice} — turn skipped.`);
+    state.turn.owedExtraRoll = false;
+    advanceTurn(state);
+  }
+}
+
 function evaluateRoll(state: Draft, dice: number) {
   const hr = state.gameConfig.houseRules;
   state.turn.diceValue = dice;
@@ -128,16 +149,7 @@ function evaluateRoll(state: Draft, dice: number) {
   state.legalMoves = moves;
 
   if (moves.length === 0) {
-    if (dice === 6 && state.turn.consecutiveSixes < 3) {
-      note(state, "No legal move for a 6 — roll again.");
-      state.turn.diceValue = null;
-      state.legalMoves = [];
-      state.phase = "idle";
-      return;
-    }
-    note(state, `No legal move for a ${dice} — turn skipped.`);
-    state.turn.owedExtraRoll = false;
-    advanceTurn(state);
+    noLegalRoll(state, dice);
     return;
   }
   if (moves.length === 1) {
@@ -149,7 +161,7 @@ function evaluateRoll(state: Draft, dice: number) {
 
 function finishMove(state: Draft) {
   const pending = state.pending;
-  if (!pending || pending.remaining > 0) return;
+  if (!pending || pending.remaining > 0 || pending.finishStage === "enter") return;
   const token = tokenById(state, pending.tokenId);
   refreshTokenState(token);
 
@@ -200,17 +212,41 @@ function finishMove(state: Draft) {
 
 export function gameReducer(state: GameState, action: Action): GameState {
   if (action.type === "HYDRATE") {
-    const hydrated = structuredClone(action.state);
+    const hydrated = normalizeHomePath(structuredClone(action.state));
     hydrated.settings = normalizeGuidance(hydrated.settings);
-    if (hydrated.activeModal === "CUT_REWARD" || hydrated.rewardMove) {
+    const savedReward =
+      hydrated.activeModal === "CUT_REWARD" ||
+      hydrated.rewardMove ||
+      (hydrated.activeModal === "SECOND_LAP_CHOICE" && hydrated.modalContext["isReward"] === true);
+    if (savedReward) {
       // Older saves may have opened this dialog without recording a capture roll.
       hydrated.turn.owedExtraRoll = true;
       if (hydrated.turn.consecutiveSixes >= 3) hydrated.turn.consecutiveSixes = 0;
     }
+    if (hydrated.activeModal === "SECOND_LAP_CHOICE") {
+      const context = hydrated.modalContext as {
+        tokenId?: string;
+        dice?: number;
+        isReward?: boolean;
+      };
+      const token = hydrated.tokens.find((t) => t.id === context.tokenId);
+      const dice = context.dice ?? 0;
+      const legal = getLegalMoves(hydrated, dice, Boolean(context.isReward));
+      if (
+        !token ||
+        !triggersSecondLap(hydrated, token, dice) ||
+        (!legal.some((m) => m.tokenId === token.id) && !canContinueSecondLap(hydrated, token, dice))
+      ) {
+        hydrated.activeModal = "NONE";
+        hydrated.modalContext = {};
+        hydrated.rewardMove = Boolean(context.isReward);
+        hydrated.phase = "select";
+      }
+    }
     if (hydrated.phase === "select") {
       const dice = hydrated.rewardMove ? 6 : (hydrated.turn.diceValue ?? 0);
       hydrated.legalMoves = getLegalMoves(hydrated, dice, hydrated.rewardMove);
-      if (hydrated.legalMoves.length === 0) advanceTurn(hydrated);
+      if (hydrated.legalMoves.length === 0) noLegalRoll(hydrated, dice);
     } else {
       hydrated.legalMoves = [];
     }
@@ -341,8 +377,23 @@ export function gameReducer(state: GameState, action: Action): GameState {
       if (!pending || pending.remaining <= 0) return state;
       const token = tokenById(draft, pending.tokenId);
       token.steps += 1;
-      refreshTokenState(token);
       pending.remaining -= 1;
+      if (token.steps === maxStepsOf(token) && pending.remaining === 0) {
+        // Keep completion/bonuses pending until the entry and settling motion finish.
+        token.state = "home_stretch";
+        pending.finishStage = "enter";
+      } else refreshTokenState(token);
+      break;
+    }
+    case "ADVANCE_FINISH": {
+      if (
+        draft.phase !== "moving" ||
+        draft.pending?.tokenId !== action.tokenId ||
+        draft.pending.remaining !== 0 ||
+        draft.pending.finishStage !== "enter"
+      )
+        return state;
+      draft.pending.finishStage = "settle";
       break;
     }
     case "FINISH_MOVE": {
@@ -429,7 +480,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
       );
       return () => window.clearTimeout(id);
     }
-    const id = window.setTimeout(() => dispatch({ type: "FINISH_MOVE" }), reduced ? 30 : 200);
+    const entering = pending.finishStage === "enter";
+    const id = window.setTimeout(
+      () =>
+        dispatch(
+          entering ? { type: "ADVANCE_FINISH", tokenId: pending.tokenId } : { type: "FINISH_MOVE" },
+        ),
+      reduced ? 30 : pending.finishStage === "settle" ? 180 : 200,
+    );
     return () => window.clearTimeout(id);
   }, [state.pending]);
 
@@ -441,7 +499,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 export function useGame() {
   const ctx = useContext(GameContext);
   if (!ctx) throw new Error("useGame must be used inside GameProvider");
-  return { state: ctx.state as GameState, dispatch: ctx.dispatch };
+  return { state: ctx.state as GameState, dispatch: ctx.dispatch, ready: ctx.ready };
 }
 
 export { clearSave, loadGame, playSfx, unlockAudio, vibrate, junctionOf };

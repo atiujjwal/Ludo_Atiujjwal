@@ -11,6 +11,8 @@ import {
   SAFE_SQUARES,
   TRACK,
   absoluteIndex,
+  boardLayoutOf,
+  geometryColor,
   isOnCommon,
 } from "@/lib/ludo/board";
 import { blockades, getLegalMoves } from "@/lib/ludo/engine";
@@ -36,6 +38,7 @@ export function LudoBoard({
   theme = APPEARANCE.board,
   tokenSkin = APPEARANCE.token,
 }: Props) {
+  const layout = useMemo(() => boardLayoutOf(state.gameConfig), [state.gameConfig]);
   const walls = useMemo(() => blockades(state), [state]);
   const moves = useMemo(
     () =>
@@ -47,16 +50,19 @@ export function LudoBoard({
   const selectable = new Set(moves.map((m) => m.tokenId));
   const guidance = guidanceEnabled(state.settings);
   const previews = useMemo(() => (guidance ? destinations(state) : []), [state, guidance]);
-  const positioned = useMemo(() => positionTokens(state.tokens), [state.tokens]);
+  const positioned = useMemo(
+    () => positionTokens(state.tokens, state.pending, layout),
+    [state.tokens, state.pending, layout],
+  );
   const stacks = new Map(
-    positioned.filter((item) => item.count > 1).map((item) => [item.key, item.cell]),
+    positioned.filter((item) => item.count > 1).map((item) => [item.key, item]),
   );
 
   return (
     <div className="royal-board-group">
       <div className={theme.className} data-board-theme={theme.id} aria-label="Ludo board">
         <div className="royal-grid">
-          <BoardArtwork />
+          <BoardArtwork layout={layout} />
           {COLOR_ORDER.map((color) => (
             <div
               key={color}
@@ -64,7 +70,10 @@ export function LudoBoard({
               aria-hidden
               data-active={activeColor === color}
               data-unused={!state.gameConfig.activeColors.includes(color)}
-              style={{ ...cellStyle(BASE_ORIGIN[color], 6), ...colorStyle(color) }}
+              style={{
+                ...cellStyle(BASE_ORIGIN[geometryColor(color, layout)], 6),
+                ...colorStyle(color),
+              }}
             />
           ))}
           {Array.from(walls.keys()).map((square) => (
@@ -84,13 +93,22 @@ export function LudoBoard({
               style={cellStyle(preview.cell)}
             />
           ))}
-          {Array.from(stacks, ([key, cell]) => (
-            <div key={key} className="royal-stack-outline" aria-hidden style={cellStyle(cell)} />
+          {Array.from(stacks, ([key, item]) => (
+            <div
+              key={key}
+              className="royal-stack-outline"
+              data-protected={
+                isOnCommon(item.token) &&
+                SAFE_SQUARES.has(absoluteIndex(item.token.color, item.token.steps, layout))
+              }
+              aria-hidden
+              style={cellStyle(item.cell)}
+            />
           ))}
           {positioned.map((item) => {
             const { token, slot } = item;
             const legal = selectable.has(token.id);
-            const square = isOnCommon(token) ? absoluteIndex(token.color, token.steps) : -1;
+            const square = isOnCommon(token) ? absoluteIndex(token.color, token.steps, layout) : -1;
             const safe = SAFE_SQUARES.has(square);
             const walled = walls.has(square);
             const moving = state.phase === "moving" && state.pending?.tokenId === token.id;
@@ -99,7 +117,7 @@ export function LudoBoard({
                 ? "home"
                 : moving
                   ? "moving"
-                  : legal && guidance
+                  : legal
                     ? "selectable"
                     : walled
                       ? "walled"
@@ -112,6 +130,7 @@ export function LudoBoard({
                 item={item}
                 legal={legal}
                 moving={moving}
+                settling={moving && state.pending?.finishStage === "settle"}
                 visual={visual}
                 skin={tokenSkin}
                 onSelect={onSelect}
@@ -119,7 +138,11 @@ export function LudoBoard({
               />
             );
           })}
-          <BoardEffects capture={state.lastCapture ?? null} celebrate={celebrate ?? null} />
+          <BoardEffects
+            layout={layout}
+            capture={state.lastCapture ?? null}
+            celebrate={celebrate ?? null}
+          />
         </div>
       </div>
       {guidance && moves.length > 0 && (

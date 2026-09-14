@@ -1,7 +1,5 @@
 /**
- * Tiny synthesized SFX engine. No audio files are shipped: each event is a short
- * Web Audio blip, keyed by the same event names an mp3 manifest would use, so
- * real samples can replace this later without touching call sites.
+ * Sample-backed cues with lightweight synthesized fallbacks.
  */
 export type SfxName =
   | "diceRoll"
@@ -82,7 +80,7 @@ export function unlockAudio(): void {
       if (!Ctor) return;
       ctx = new Ctor();
     }
-    void ctx.resume();
+    void ctx.resume().catch(() => {});
   } catch {
     ctx = null;
   }

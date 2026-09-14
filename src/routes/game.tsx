@@ -6,8 +6,9 @@ import { toast } from "sonner";
 import { LudoBoard } from "@/components/ludo/LudoBoard";
 import { GameModals } from "@/components/ludo/Modals";
 import { PlayerPanel } from "@/components/ludo/PlayerPanel";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
-import { controllingColor, playerById } from "@/lib/ludo/engine";
+import { controllingColor, playerById, playerAtCorner } from "@/lib/ludo/engine";
 import { PALETTE } from "@/lib/ludo/palette";
 import { useGame } from "@/lib/ludo/store";
 import { playSfx, unlockAudio, vibrate } from "@/lib/ludo/audio";
@@ -17,7 +18,7 @@ import {
   GAME_GUIDANCE_TOAST_ID,
   guidanceEnabled,
 } from "@/lib/ludo/guidance";
-import { COLOR_CORNER, type Corner } from "@/lib/ludo/board";
+import { type Corner } from "@/lib/ludo/board";
 import type { Color } from "@/lib/ludo/types";
 
 export const Route = createFileRoute("/game")({
@@ -42,7 +43,7 @@ export const Route = createFileRoute("/game")({
 });
 
 function GameScreen() {
-  const { state, dispatch } = useGame();
+  const { state, dispatch, ready: gameReady } = useGame();
   const navigate = useNavigate();
   const [rolling, setRolling] = useState(false);
   const guidance = guidanceEnabled(state.settings);
@@ -55,7 +56,8 @@ function GameScreen() {
   );
   const [ready, setReady] = useState(false);
   const [celebrate, setCelebrate] = useState<{ color: Color; id: number } | null>(null);
-  const homeCount = useRef(0);
+  const completedIds = useRef<Set<string> | null>(null);
+  const celebrationTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     setReady(true);
@@ -76,26 +78,44 @@ function GameScreen() {
   // Local celebration whenever a piece reaches the goal.
   useEffect(() => {
     const finished = state.tokens.filter((t) => t.state === "finished");
-    if (finished.length > homeCount.current) {
-      const last = finished[finished.length - 1]!;
+    if (!gameReady) {
+      completedIds.current = null;
+      return;
+    }
+    const previous = completedIds.current;
+    completedIds.current = new Set(finished.map((t) => t.id));
+    const last = previous && finished.find((t) => !previous.has(t.id));
+    if (last) {
       setCelebrate({ color: last.color, id: Date.now() });
       playSfx("tokenHome");
       vibrate([12, 40, 12]);
-      window.setTimeout(() => setCelebrate(null), 1000);
+      window.clearTimeout(celebrationTimer.current);
+      celebrationTimer.current = window.setTimeout(() => setCelebrate(null), 1000);
     }
-    homeCount.current = finished.length;
-  }, [state.tokens]);
+  }, [state.tokens, gameReady]);
+  useEffect(() => () => window.clearTimeout(celebrationTimer.current), []);
 
   // Capture feedback — thud plus a buzz when pieces get sent home.
-  const lastCaptureId = useRef(0);
+  const lastCaptureId = useRef<number | undefined>(undefined);
+  const captureReady = useRef(false);
   useEffect(() => {
     const cap = state.lastCapture;
+    if (!gameReady) {
+      captureReady.current = false;
+      return;
+    }
+    if (!captureReady.current) {
+      captureReady.current = true;
+      lastCaptureId.current = cap?.id;
+      return;
+    }
+    if (!cap) lastCaptureId.current = undefined;
     if (cap && cap.id !== lastCaptureId.current) {
       lastCaptureId.current = cap.id;
       playSfx("tokenCut");
       vibrate([18, 50, 26]);
     }
-  }, [state.lastCapture]);
+  }, [state.lastCapture, gameReady]);
 
   useEffect(() => {
     if (state.activeModal === "GAME_OVER") playSfx("gameWin");
@@ -110,7 +130,7 @@ function GameScreen() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [state.phase]);
 
-  if (!ready) return null;
+  if (!ready || !gameReady) return null;
 
   const player = playerById(state, state.turn.currentPlayerId);
   const acting = controllingColor(state);
@@ -132,8 +152,7 @@ function GameScreen() {
 
   // Each player sits at the corner their colour owns on the board, so their
   // dice is always beside their own yard.
-  const seatAt = (corner: Corner) =>
-    state.players.find((p) => COLOR_CORNER[p.color] === corner) ?? null;
+  const seatAt = (corner: Corner) => playerAtCorner(state, corner);
 
   const status =
     state.phase === "select"
@@ -216,6 +235,7 @@ function GameScreen() {
               <VolumeX className="h-5 w-5" />
             )}
           </Button>
+          <ThemeToggle />
         </div>
       </div>
 

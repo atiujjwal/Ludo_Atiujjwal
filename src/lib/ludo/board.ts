@@ -1,9 +1,11 @@
-import type { Color, Token } from "./types";
+import type { Color, GameConfig, Token } from "./types";
 
 export interface Cell {
   col: number;
   row: number;
 }
+export const TRACK_LENGTH = 52;
+export const HOME_LANE_LENGTH = 5;
 
 /** Absolute start index of each color on the shared 52-square loop. */
 export const START_OFFSET: Record<Color, number> = {
@@ -47,15 +49,21 @@ export const TRACK: Cell[] = [
   { col: 0, row: 6 },
 ];
 
-/** Six private home-column cells per color, ordered from entry to goal. */
+/** Five private cells; the next dice step enters the centre home triangle. */
 export const HOME_COLUMN: Record<Color, Cell[]> = {
-  red: run({ col: 1, row: 7 }, { col: 6, row: 7 }),
-  green: run({ col: 7, row: 1 }, { col: 7, row: 6 }),
-  yellow: run({ col: 13, row: 7 }, { col: 8, row: 7 }),
-  blue: run({ col: 7, row: 13 }, { col: 7, row: 8 }),
+  red: run({ col: 1, row: 7 }, { col: 5, row: 7 }),
+  green: run({ col: 7, row: 1 }, { col: 7, row: 5 }),
+  yellow: run({ col: 13, row: 7 }, { col: 9, row: 7 }),
+  blue: run({ col: 7, row: 13 }, { col: 7, row: 9 }),
 };
 
 export const GOAL: Cell = { col: 7, row: 7 };
+export const FINISH_CELL: Record<Color, Cell> = {
+  red: { col: 6, row: 7 },
+  green: { col: 7, row: 6 },
+  yellow: { col: 8, row: 7 },
+  blue: { col: 7, row: 8 },
+};
 
 /** Top-left corner of each color's base yard (6x6 block). */
 export const BASE_ORIGIN: Record<Color, Cell> = {
@@ -74,35 +82,36 @@ export const BASE_SLOTS: Cell[] = [
 
 /** Step index at which this token turns off the shared loop into its home column. */
 export function junctionOf(token: Pick<Token, "lap">): number {
-  return 51 + 52 * token.lap;
+  return TRACK_LENGTH - 1 + TRACK_LENGTH * token.lap;
 }
 
 export function maxStepsOf(token: Pick<Token, "lap">): number {
-  return junctionOf(token) + 6;
+  return junctionOf(token) + HOME_LANE_LENGTH;
 }
 
 export function isOnCommon(token: Token): boolean {
   return token.state !== "base" && token.state !== "finished" && token.steps < junctionOf(token);
 }
 
-export function absoluteIndex(color: Color, steps: number): number {
-  return (START_OFFSET[color] + steps) % 52;
+export function absoluteIndex(color: Color, steps: number, layout = DEFAULT_BOARD_LAYOUT): number {
+  return (START_OFFSET[geometryColor(color, layout)] + steps) % TRACK_LENGTH;
 }
 
 /** Where a token sits on the 15x15 grid. Base tokens use their yard slot. */
-export function cellForToken(token: Token, slot: number): Cell {
+export function cellForToken(token: Token, slot: number, layout = DEFAULT_BOARD_LAYOUT): Cell {
+  const geometry = geometryColor(token.color, layout);
   if (token.state === "base") {
-    const origin = BASE_ORIGIN[token.color];
+    const origin = BASE_ORIGIN[geometry];
     const s = BASE_SLOTS[slot % 4]!;
     return { col: origin.col + s.col, row: origin.row + s.row };
   }
   const junction = junctionOf(token);
   if (token.steps < junction) {
-    return TRACK[absoluteIndex(token.color, token.steps)]!;
+    return TRACK[absoluteIndex(token.color, token.steps, layout)]!;
   }
   const inHome = token.steps - junction;
-  if (inHome >= 6) return GOAL;
-  return HOME_COLUMN[token.color][inHome]!;
+  if (inHome >= HOME_LANE_LENGTH) return FINISH_CELL[geometry];
+  return HOME_COLUMN[geometry][inHome]!;
 }
 
 export const COLOR_ORDER: Color[] = ["red", "green", "yellow", "blue"];
@@ -131,6 +140,71 @@ export const COLOR_CORNER: Record<Color, Corner> = {
   yellow: "br",
   blue: "bl",
 };
+
+export interface BoardLayout {
+  readonly colorToCorner: Readonly<Record<Color, Corner>>;
+  readonly cornerToColor: Readonly<Record<Corner, Color>>;
+}
+export const CORNER_COLOR: Readonly<Record<Corner, Color>> = Object.freeze({
+  tl: "red",
+  tr: "green",
+  br: "yellow",
+  bl: "blue",
+});
+export const DEFAULT_BOARD_LAYOUT: BoardLayout = Object.freeze({
+  colorToCorner: Object.freeze({ ...COLOR_CORNER }),
+  cornerToColor: CORNER_COLOR,
+});
+const layouts = new Map<string, BoardLayout>();
+
+/** Geometry is a seat's property; token colour is always the player's identity. */
+export function geometryColor(color: Color, layout = DEFAULT_BOARD_LAYOUT): Color {
+  return CORNER_COLOR[layout.colorToCorner[color]];
+}
+
+/** Deterministic across starts, rematches and old saves; never modifies game data. */
+export function boardLayoutOf(config: Pick<GameConfig, "mode" | "activeColors">): BoardLayout {
+  const [first, second] = config.activeColors;
+  if (
+    config.mode !== "2P" ||
+    config.activeColors.length !== 2 ||
+    !first ||
+    !second ||
+    first === second ||
+    !COLOR_ORDER.includes(first) ||
+    !COLOR_ORDER.includes(second)
+  )
+    return DEFAULT_BOARD_LAYOUT;
+  const key = `${first}:${second}`;
+  const cached = layouts.get(key);
+  if (cached) return cached;
+  const assigned: Partial<Record<Color, Corner>> = { [first]: "tl", [second]: "br" };
+  const free = new Set<Corner>(["tr", "bl"]);
+  const unused = COLOR_ORDER.filter((color) => color !== first && color !== second);
+  for (const color of unused) {
+    if (free.has(COLOR_CORNER[color])) {
+      assigned[color] = COLOR_CORNER[color];
+      free.delete(COLOR_CORNER[color]);
+    }
+  }
+  for (const color of unused) {
+    if (!assigned[color]) {
+      const corner = free.values().next().value!;
+      assigned[color] = corner;
+      free.delete(corner);
+    }
+  }
+  const colorToCorner = assigned as Record<Color, Corner>;
+  const cornerToColor = Object.fromEntries(
+    COLOR_ORDER.map((color) => [colorToCorner[color], color]),
+  ) as Record<Corner, Color>;
+  const layout = Object.freeze({
+    colorToCorner: Object.freeze(colorToCorner),
+    cornerToColor: Object.freeze(cornerToColor),
+  });
+  layouts.set(key, layout);
+  return layout;
+}
 
 /** The colour sitting diagonally across the board. */
 export const OPPOSITE_COLOR: Record<Color, Color> = {

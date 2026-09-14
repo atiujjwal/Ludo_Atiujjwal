@@ -7,6 +7,38 @@ import { gameReducer } from "./store";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("royal presentation preserves v1 saves", () => {
+  it("converts an unmarked save on load while retaining its reward dialog", () => {
+    const state = createGame("4P", DEFAULT_HOUSE_RULES, {});
+    delete state.homePathVersion;
+    Object.assign(state.tokens[0]!, { steps: 108, lap: 1, state: "home_stretch" });
+    Object.assign(state.tokens[1]!, { steps: 109, lap: 1, state: "finished" });
+    state.activeModal = "CUT_REWARD";
+    state.phase = "modal";
+    state.turn.owedExtraRoll = true;
+    vi.stubGlobal("window", { localStorage: { getItem: () => JSON.stringify(state) } });
+    const loaded = loadGame()!;
+    expect(loaded.homePathVersion).toBe(2);
+    expect(loaded.tokens[0]!.steps).toBe(107);
+    expect(loaded.tokens[1]!.steps).toBe(108);
+    expect(loaded.activeModal).toBe("CUT_REWARD");
+    expect(loaded.turn.owedExtraRoll).toBe(true);
+  });
+  it.each(["enter", "settle"] as const)(
+    "recovers an interrupted %s without stranding a token",
+    (finishStage) => {
+      const state = createGame("4P", DEFAULT_HOUSE_RULES, {});
+      Object.assign(state.tokens[0]!, { steps: 56, state: "home_stretch" });
+      state.phase = "moving";
+      state.pending = { tokenId: "red-0", remaining: 0, isReward: false, finishStage };
+      vi.stubGlobal("window", { localStorage: { getItem: () => JSON.stringify(state) } });
+      const loaded = loadGame()!;
+      expect(loaded.tokens[0]!.steps).toBe(55);
+      expect(loaded.pending).toBeNull();
+      expect(loaded.phase).toBe("idle");
+      const next = gameReducer(loaded, { type: "ROLL", value: 1 });
+      expect(next.pending?.tokenId).toBe("red-0");
+    },
+  );
   it("loads an existing stable game unchanged, without skin fields or migration", () => {
     const state = createGame("4P", DEFAULT_HOUSE_RULES, {});
     state.tokens[0]!.steps = 14;

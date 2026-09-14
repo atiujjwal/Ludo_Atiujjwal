@@ -22,6 +22,8 @@ function finish(state: GameState) {
   for (let i = 0; next.pending && next.pending.remaining > 0 && i < 12; i++) {
     next = gameReducer(next, { type: "HOP" });
   }
+  if (next.pending?.finishStage === "enter")
+    next = gameReducer(next, { type: "ADVANCE_FINISH", tokenId: next.pending.tokenId });
   return gameReducer(next, { type: "FINISH_MOVE" });
 }
 
@@ -170,8 +172,8 @@ describe("third-six exceptions start a fresh streak", () => {
   it("home completion on a third six resets the streak without ending a still-playable player's turn", () => {
     const state = game("4P", { threeSixesVariant: true });
     const token = place(state, "red", 0, 0);
-    token.steps = 51;
-    token.state = "home_stretch";
+    token.steps = 50;
+    token.state = "common";
     state.turn.consecutiveSixes = 2;
     let next = finish(move(state, 6));
     expect(next.turn.consecutiveSixes).toBe(0);
@@ -205,11 +207,11 @@ describe("third-six exceptions start a fresh streak", () => {
     state.tokens
       .filter((t) => t.color === "red")
       .forEach((t) => {
-        t.steps = 57;
+        t.steps = 56;
         t.state = "finished";
       });
-    state.tokens[0]!.steps = 51;
-    state.tokens[0]!.state = "home_stretch";
+    state.tokens[0]!.steps = 50;
+    state.tokens[0]!.state = "common";
     state.turn.consecutiveSixes = 2;
     const next = finish(move(state, 6));
     expect(next.phase).toBe("over");

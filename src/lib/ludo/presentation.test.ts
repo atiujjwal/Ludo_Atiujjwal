@@ -6,7 +6,7 @@ import { BoardArtwork } from "@/components/ludo/BoardArtwork";
 import { Dice } from "@/components/ludo/Dice";
 import {
   COLOR_ORDER,
-  GOAL,
+  FINISH_CELL,
   HOME_COLUMN,
   SAFE_SQUARES,
   START_OFFSET,
@@ -59,8 +59,10 @@ describe("authoritative destination previews", () => {
       expect(destinations(state)[0]?.cell).toEqual(TRACK[absoluteIndex(color, 7)]);
       token.steps = 50;
       expect(destinations(state).find((p) => !p.alternative)?.cell).toEqual(HOME_COLUMN[color][1]);
-      token.steps = 55;
-      expect(destinations(state)).toEqual([{ tokenId: token.id, alternative: false, cell: GOAL }]);
+      token.steps = 54;
+      expect(destinations(state)).toEqual([
+        { tokenId: token.id, alternative: false, cell: FINISH_CELL[color] },
+      ]);
       state.turn.diceValue = 3;
       expect(destinations(state)).toEqual([]);
     },
@@ -103,9 +105,9 @@ describe("authoritative destination previews", () => {
 });
 
 describe("royal board rendering and accessible selection", () => {
-  it("retains 52 shared cells, 24 home cells, 16 yard slots and the central goal", () => {
+  it("retains 52 shared cells, 20 home cells, 16 yard slots and the central goal", () => {
     const html = renderToStaticMarkup(createElement(BoardArtwork));
-    expect(html.match(/class="royal-cell /g)).toHaveLength(76);
+    expect(html.match(/class="royal-cell /g)).toHaveLength(72);
     expect(html.match(/class="royal-socket"/g)).toHaveLength(16);
     expect(html.match(/class="royal-center"/g)).toHaveLength(1);
   });
@@ -127,7 +129,7 @@ describe("royal board rendering and accessible selection", () => {
     expect(html.match(/class="royal-stack-outline"/g)).toHaveLength(1);
   });
   it.each([false, undefined])(
-    "hides destinations by default (%s) without hiding playable pieces",
+    "hides destinations by default (%s) but still glows playable pieces",
     (setting) => {
       const state = selecting();
       if (setting === undefined) delete state.settings.showMoveSuggestions;
@@ -137,7 +139,7 @@ describe("royal board rendering and accessible selection", () => {
       expect(destinations(state).some((p) => p.alternative)).toBe(true);
       expect(html).not.toContain("royal-destination");
       expect(html).not.toContain("royal-route-legend");
-      expect(html).not.toContain('data-visual="selectable"');
+      expect(html).toContain('data-visual="selectable"');
       expect(html).not.toContain("royal-move-picker");
       expect(html).toContain('data-legal="true"');
       expect(html).toContain('aria-label="red piece 1, can move"');
@@ -166,12 +168,12 @@ describe("royal board rendering and accessible selection", () => {
     state.activeModal = "EXIT_CONFIRM";
     expect(renderBoard(state)).not.toContain("royal-destination");
   });
-  it("renders finished pieces at the goal as nonselectable metallic pawns", () => {
+  it("renders finished pieces at the goal as nonselectable colour counters", () => {
     const state = selecting();
-    const token = place(state, "red", 0, 57);
+    const token = place(state, "red", 0, 56);
     token.state = "finished";
     const html = renderBoard(state);
-    expect(cellForToken(token, 0)).toEqual(GOAL);
+    expect(cellForToken(token, 0)).toEqual(FINISH_CELL.red);
     expect(token.steps).toBe(maxStepsOf(token));
     expect(html).toContain('aria-label="red piece 1, finished"');
     expect(html).toContain('data-visual="home"');
@@ -181,10 +183,12 @@ describe("royal board rendering and accessible selection", () => {
     for (let count = 1; count <= 16; count++) {
       for (let i = 0; i < count; i++) {
         const p = stackPlacement(i, count);
-        expect(p.x).toBeGreaterThanOrEqual(0);
-        expect(p.y).toBeGreaterThanOrEqual(0);
-        expect(p.x + p.scale).toBeLessThanOrEqual(1);
-        expect(p.y + p.scale).toBeLessThanOrEqual(1);
+        expect(p.width).toBe(1);
+        expect(p.height).toBe(1);
+        expect(p.x + 0.08).toBeGreaterThanOrEqual(0);
+        expect(p.y + 0.08).toBeGreaterThanOrEqual(0);
+        expect(p.x + p.width - 0.08).toBeLessThanOrEqual(1);
+        expect(p.y + p.height - 0.08).toBeLessThanOrEqual(1);
       }
     }
   });

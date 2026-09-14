@@ -9,4 +9,11 @@ export const cellStyle = (cell: Cell, size = 1): CSSProperties => ({
   width: `${(size * 100) / 15}%`,
   height: `${(size * 100) / 15}%`,
 });
-export const colorStyle = (color: Color) => ({ "--enamel": ENAMEL[color] }) as CSSProperties;
+export const colorStyle = (color: Color) =>
+  ({
+    "--enamel": ENAMEL[color],
+    "--enamel-ink":
+      color === "yellow"
+        ? "var(--enamel-yellow-marker-ink, var(--royal-safe-ink))"
+        : "var(--enamel-marker-ink, var(--royal-safe-ink))",
+  }) as CSSProperties;

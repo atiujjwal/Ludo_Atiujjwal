@@ -1,5 +1,7 @@
 import type { GameState } from "./types";
 import { normalizeGuidance } from "./guidance";
+import { normalizeHomePath } from "./home-path-migration";
+import { maxStepsOf } from "./board";
 
 const KEY = "ludo:save:v1";
 
@@ -42,10 +44,16 @@ export function loadGame(): GameState | null {
       window.localStorage.removeItem(KEY);
       return null;
     }
-    const state = parsed;
+    const state = normalizeHomePath(parsed);
     state.settings = normalizeGuidance(state.settings);
     // Never restore mid-animation or mid-roll.
     if (state.pending) {
+      // Rewind uncompleted triangle entry when discarding interrupted animation.
+      const token = state.tokens.find((t) => t.id === state.pending?.tokenId);
+      if (state.pending.finishStage && token && token.state !== "finished") {
+        token.steps = maxStepsOf(token) - 1;
+        token.state = "home_stretch";
+      }
       state.pending = null;
       state.phase = "idle";
       state.turn.diceValue = null;

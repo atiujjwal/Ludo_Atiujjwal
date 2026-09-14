@@ -93,9 +93,9 @@ function HomeMenu() {
           className="block"
         >
           <span
-            className="relative flex h-20 w-full items-center justify-center gap-3 overflow-hidden rounded-3xl text-2xl font-black text-white transition-transform active:translate-y-1"
+            className="relative flex h-20 w-full items-center justify-center gap-3 overflow-hidden rounded-3xl text-2xl font-black text-[var(--on-color)] transition-transform active:translate-y-1"
             style={{
-              background: "linear-gradient(160deg, #a62d4b, #671729)",
+              background: "var(--play-surface)",
               boxShadow: "0 8px 0 0 var(--ludo-red-dark), 0 20px 34px -16px var(--ludo-red-dark)",
             }}
           >

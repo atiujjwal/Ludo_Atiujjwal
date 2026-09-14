@@ -38,7 +38,7 @@ function finish(state: GameState, color: Color, indexes: number[]) {
   for (const index of indexes) {
     const piece = token(state, color, index);
     piece.state = "finished";
-    piece.steps = junctionOf(piece) + 6;
+    piece.steps = junctionOf(piece) + 5;
   }
 }
 
@@ -56,6 +56,8 @@ function completePendingMove(state: GameState): GameState {
   while (next.pending && next.pending.remaining > 0 && guard-- > 0) {
     next = reduce(next, { type: "HOP" });
   }
+  if (next.pending?.finishStage === "enter")
+    next = reduce(next, { type: "ADVANCE_FINISH", tokenId: next.pending.tokenId });
   if (next.pending) next = reduce(next, { type: "FINISH_MOVE" });
   return next;
 }
@@ -89,9 +91,10 @@ describe("gameplay matrix: modes and configuration", () => {
     expect(threePlayer.turn.currentPlayerId).toBe("p-yellow");
   });
 
-  it("rejects adjacent seats for a two-player game", () => {
+  it("allows any unique colour pair for a two-player game", () => {
     const state = game("2P", {}, ["red", "green"]);
-    expect(state.players.map((player) => player.color)).toEqual(["red", "yellow"]);
+    expect(state.players.map((player) => player.color)).toEqual(["red", "green"]);
+    expect(state.turn.currentPlayerId).toBe("p-red");
   });
 
   it("stores every custom rule exactly as configured", () => {
@@ -166,14 +169,14 @@ describe("gameplay matrix: complete legal move generation", () => {
 
   it("requires an exact roll at the final home square", () => {
     const state = game();
-    placeAtSteps(state, "red", 0, 56);
+    placeAtSteps(state, "red", 0, 55);
     expect(legalIds(state, 1)).toContain("red-0");
     expect(legalIds(state, 2)).not.toContain("red-0");
   });
 
   it("keeps other valid tokens playable when one token would overshoot home", () => {
     const state = game();
-    placeAtSteps(state, "red", 0, 56);
+    placeAtSteps(state, "red", 0, 55);
     placeAtSteps(state, "red", 1, 14);
     expect(legalIds(state, 2)).toEqual(["red-1"]);
   });
@@ -309,7 +312,7 @@ describe("gameplay matrix: turn and bonus resolution", () => {
 
   it("keeps the turn after a six when every token would overshoot home", () => {
     const state = game();
-    for (let index = 0; index < 4; index += 1) placeAtSteps(state, "red", index, 56);
+    for (let index = 0; index < 4; index += 1) placeAtSteps(state, "red", index, 55);
     const moved = roll(state, 6);
     expect(moved.turn.currentPlayerId).toBe("p-red");
     expect(moved.turn.diceValue).toBeNull();
@@ -351,7 +354,7 @@ describe("gameplay matrix: turn and bonus resolution", () => {
 
   it("grants an extra roll after completing a token", () => {
     const state = game();
-    placeAtSteps(state, "red", 0, 56);
+    placeAtSteps(state, "red", 0, 55);
     const moved = completePendingMove(roll(state, 1));
     expect(token(moved, "red", 0).state).toBe("finished");
     expect(moved.turn.currentPlayerId).toBe("p-red");
@@ -360,7 +363,7 @@ describe("gameplay matrix: turn and bonus resolution", () => {
 
   it("does not waste a bonus roll after a non-team player finishes every token", () => {
     const state = game();
-    placeAtSteps(state, "red", 0, 56);
+    placeAtSteps(state, "red", 0, 55);
     finish(state, "red", [1, 2, 3]);
     const moved = completePendingMove(roll(state, 1));
     expect(moved.players.find((player) => player.color === "red")?.finished).toBe(true);
@@ -369,7 +372,7 @@ describe("gameplay matrix: turn and bonus resolution", () => {
 
   it("lets a finished 2v2 player use the bonus roll for their teammate", () => {
     const state = game("2V2");
-    placeAtSteps(state, "red", 0, 56);
+    placeAtSteps(state, "red", 0, 55);
     finish(state, "red", [1, 2, 3]);
     const moved = completePendingMove(roll(state, 1));
     expect(moved.turn.currentPlayerId).toBe("p-red");
@@ -378,7 +381,7 @@ describe("gameplay matrix: turn and bonus resolution", () => {
 
   it("ends a two-player game when the winning player's fourth token arrives", () => {
     const state = game("2P");
-    placeAtSteps(state, "red", 0, 56);
+    placeAtSteps(state, "red", 0, 55);
     finish(state, "red", [1, 2, 3]);
     const moved = completePendingMove(roll(state, 1));
     expect(moved.phase).toBe("over");
@@ -388,7 +391,7 @@ describe("gameplay matrix: turn and bonus resolution", () => {
 
   it("ends a 2v2 game when all eight team tokens are home", () => {
     const state = game("2V2");
-    placeAtSteps(state, "red", 0, 56);
+    placeAtSteps(state, "red", 0, 55);
     finish(state, "red", [1, 2, 3]);
     finish(state, "yellow", [0, 1, 2, 3]);
     const moved = completePendingMove(roll(state, 1));
@@ -524,7 +527,7 @@ describe("gameplay matrix: reducer and UI source-of-truth safeguards", () => {
 
   it("keeps the Cut Reward modal open when an unavailable reward is dispatched", () => {
     const state = game("4P", { cutReward: true });
-    for (let index = 0; index < 4; index += 1) placeAtSteps(state, "red", index, 56);
+    for (let index = 0; index < 4; index += 1) placeAtSteps(state, "red", index, 55);
     state.phase = "modal";
     state.activeModal = "CUT_REWARD";
     expect(reduce(state, { type: "CUT_RELEASE" })).toBe(state);

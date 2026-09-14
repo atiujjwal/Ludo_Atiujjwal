@@ -3,7 +3,6 @@ import { Crown } from "lucide-react";
 import { Dice } from "@/components/ludo/Dice";
 import { Token } from "@/components/ludo/Token";
 import { tokensOf } from "@/lib/ludo/engine";
-import { guidanceEnabled } from "@/lib/ludo/guidance";
 import { PALETTE } from "@/lib/ludo/palette";
 import type { GameState, Player } from "@/lib/ludo/types";
 import { cn } from "@/lib/utils";
@@ -16,7 +15,7 @@ interface Props {
   rolling: boolean;
   canRoll: boolean;
   onRoll: () => void;
-  /** Mirror the layout so the dice hugs the board on right-hand seats. */
+  /** Right-hand seat: keep its dice at the outer right edge. */
   flip?: boolean;
 }
 
@@ -39,13 +38,14 @@ export function PlayerPanel({
     <div
       className={cn(
         "royal-player-panel relative flex min-w-0 items-center gap-2 rounded-2xl px-2.5 py-2 transition-transform duration-200",
-        flip && "flex-row-reverse text-right",
+        !flip && "flex-row-reverse",
+        flip && "text-right",
         isTurn ? "scale-[1.02]" : "opacity-90",
       )}
       style={{
         boxShadow: isTurn
           ? `0 0 0 0.16rem ${p.base}, 0 12px 22px -14px ${p.dark}`
-          : "0 0 0 1px rgba(60,40,15,0.08)",
+          : "var(--elev-1)",
       }}
     >
       <Token color={player.color} className="h-8 w-8 shrink-0" />
@@ -77,12 +77,12 @@ export function PlayerPanel({
                 "h-1.5 w-3 rounded-full",
                 i === home - 1 && "animate-[ludo-pop_0.35s_ease-out]",
               )}
-              style={{ background: i < home ? p.base : "#ffffff24" }}
+              style={{ background: i < home ? p.base : "var(--progress-empty)" }}
             />
           ))}
           {sixStreak > 0 && (
             <span
-              className="ml-1 animate-[ludo-pop_0.3s_ease-out] rounded-full px-1.5 text-[0.6rem] font-black leading-tight text-white"
+              className="ml-1 animate-[ludo-pop_0.3s_ease-out] rounded-full px-1.5 text-[0.6rem] font-black leading-tight text-[var(--on-color)]"
               style={{ background: sixStreak >= 3 ? "var(--ludo-red)" : p.dark }}
             >
               {"6".repeat(sixStreak)}
@@ -95,9 +95,7 @@ export function PlayerPanel({
         value={isTurn ? state.turn.diceValue : null}
         rolling={isTurn && rolling}
         active={isTurn && canRoll}
-        waiting={
-          guidanceEnabled(state.settings) && isTurn && canRoll && state.turn.diceValue === null
-        }
+        waiting={isTurn && canRoll && state.turn.diceValue === null}
         live={isTurn}
         color={player.color}
         size="sm"

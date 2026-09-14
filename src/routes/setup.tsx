@@ -5,7 +5,7 @@ import { Check, ChevronLeft, Info, Dices, Repeat, Swords, Sparkles } from "lucid
 import { Token } from "@/components/ludo/Token";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { COLOR_LABEL, COLOR_ORDER, OPPOSITE_COLOR } from "@/lib/ludo/board";
+import { COLOR_LABEL, COLOR_ORDER } from "@/lib/ludo/board";
 import { MODE_COLORS, DEFAULT_HOUSE_RULES, TEAMS, sanitizeNickname } from "@/lib/ludo/engine";
 import { PALETTE } from "@/lib/ludo/palette";
 import { useGame } from "@/lib/ludo/store";
@@ -93,7 +93,7 @@ function ModeDiagram({ mode }: { mode: Mode }) {
               mode === "2V2"
                 ? `linear-gradient(135deg, ${PALETTE[c].light}, ${PALETTE[c].base})`
                 : PALETTE[c].base,
-            outline: mode === "2V2" && TEAMS[c] === "A" ? "1.5px solid white" : undefined,
+            outline: mode === "2V2" && TEAMS[c] === "A" ? "1.5px solid var(--on-color)" : undefined,
           }}
         />
       ))}
@@ -124,11 +124,6 @@ function SetupScreen() {
 
   const toggleColor = (color: Color) => {
     playSfx("uiTap");
-    // Two players always sit across the board from each other.
-    if (mode === "2P") {
-      setClaimed((c) => (c[0] === color ? [] : [color, OPPOSITE_COLOR[color]]));
-      return;
-    }
     setClaimed((c) =>
       c.includes(color) ? c.filter((x) => x !== color) : c.length < seats ? [...c, color] : c,
     );
@@ -170,7 +165,7 @@ function SetupScreen() {
                 style={{
                   boxShadow: on
                     ? "0 0 0 0.18rem var(--accent), var(--elev-2)"
-                    : "0 0 0 1px rgba(60,40,15,0.1), var(--elev-1)",
+                    : "var(--quiet-outline), var(--elev-1)",
                 }}
               >
                 <ModeDiagram mode={m.id} />
@@ -196,15 +191,13 @@ function SetupScreen() {
             Claim your colour
           </h2>
           <p className="mb-3 text-sm text-muted-foreground">
-            {mode === "2P"
-              ? "Tap your colour — your opponent takes the seat opposite."
-              : `Tap ${seats} colours — one per player, first pick goes first.`}
+            Tap {seats} colours — one per player, first pick goes first.
           </p>
           <div className="flex justify-between gap-3">
             {COLOR_ORDER.map((color) => {
               const index = claimed.indexOf(color);
               const taken = index >= 0;
-              const full = mode !== "2P" && claimed.length >= seats && !taken;
+              const full = claimed.length >= seats && !taken;
 
               return (
                 <button
@@ -222,7 +215,7 @@ function SetupScreen() {
                   style={{
                     boxShadow: taken
                       ? `0 0 0 0.16rem ${PALETTE[color].base}, var(--elev-2)`
-                      : "0 0 0 1px rgba(60,40,15,0.1)",
+                      : "var(--quiet-outline)",
                   }}
                 >
                   <Token color={color} visual={taken ? "idle" : "ghost"} className="w-full" />
@@ -290,7 +283,7 @@ function SetupScreen() {
                   background: on ? "var(--ludo-green-soft)" : "var(--card)",
                   boxShadow: on
                     ? "0 0 0 0.14rem var(--ludo-green), var(--elev-1)"
-                    : "0 0 0 1px rgba(60,40,15,0.1)",
+                    : "var(--quiet-outline)",
                 }}
               >
                 <div className="flex items-center gap-2">
@@ -298,7 +291,7 @@ function SetupScreen() {
                     className="hidden h-10 w-10 shrink-0 place-items-center rounded-xl min-[380px]:grid"
                     style={{
                       background: on ? "var(--ludo-green)" : "var(--secondary)",
-                      color: on ? "white" : "var(--muted-foreground)",
+                      color: on ? "var(--on-color)" : "var(--muted-foreground)",
                     }}
                   >
                     <Icon className="h-5 w-5" />
@@ -313,7 +306,7 @@ function SetupScreen() {
                     type="button"
                     aria-label={`What is ${rule.title}?`}
                     onClick={() => setOpen((o) => ({ ...o, [rule.key]: o[rule.key] !== true }))}
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-black/5"
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-accent"
                   >
                     <Info className="h-4 w-4" />
                   </button>
@@ -330,10 +323,10 @@ function SetupScreen() {
                     style={{ background: on ? "var(--ludo-green)" : "var(--secondary)" }}
                   >
                     <span
-                      className="absolute top-2 grid h-6 w-6 place-items-center rounded-full bg-primary shadow transition-transform duration-200"
+                      className="absolute top-2 grid h-6 w-6 place-items-center rounded-full bg-[var(--switch-thumb)] shadow transition-transform duration-200"
                       style={{ left: on ? "1.75rem" : "0.25rem" }}
                     >
-                      {on && <Check className="h-3.5 w-3.5 text-[var(--ludo-green)]" />}
+                      {on && <Check className="h-3.5 w-3.5 text-[var(--switch-thumb-ink)]" />}
                     </span>
                   </button>
                 </div>

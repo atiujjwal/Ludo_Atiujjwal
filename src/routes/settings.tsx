@@ -8,6 +8,8 @@ import { useGame } from "@/lib/ludo/store";
 import { clearSave } from "@/lib/ludo/persistence";
 import { guidanceEnabled } from "@/lib/ludo/guidance";
 import { playSfx } from "@/lib/ludo/audio";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { useAppTheme } from "@/lib/app-theme-context";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -25,6 +27,7 @@ export const Route = createFileRoute("/settings")({
 });
 
 function SettingsScreen() {
+  const { theme } = useAppTheme();
   const { state, dispatch } = useGame();
   const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
@@ -40,6 +43,15 @@ function SettingsScreen() {
       </div>
 
       <div className="space-y-3">
+        <div className="flex min-h-[3.5rem] items-center justify-between rounded-2xl bg-card px-4 shadow-sm">
+          <span className="font-semibold">
+            Appearance{" "}
+            <span className="text-sm text-muted-foreground">
+              — {theme === "light" ? "Light" : "Dark"}
+            </span>
+          </span>
+          <ThemeToggle />
+        </div>
         <label className="flex min-h-[3.5rem] items-center justify-between rounded-2xl bg-card px-4 shadow-sm">
           <span className="font-semibold">Sound effects</span>
           <Switch

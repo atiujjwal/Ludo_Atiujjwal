@@ -3,6 +3,9 @@ import {
   BASE_ORIGIN,
   BASE_SLOTS,
   COLOR_ORDER,
+  DEFAULT_BOARD_LAYOUT,
+  geometryColor,
+  type BoardLayout,
   HOME_COLUMN,
   SAFE_SQUARES,
   START_OFFSET,
@@ -53,8 +56,16 @@ export function RoyalMotif({ variant = 0 }: { variant?: number }) {
   );
 }
 
-function PlayerZone({ color, index }: { color: Color; index: number }) {
-  const origin = BASE_ORIGIN[color];
+function PlayerZone({
+  color,
+  index,
+  layout,
+}: {
+  color: Color;
+  index: number;
+  layout: BoardLayout;
+}) {
+  const origin = BASE_ORIGIN[geometryColor(color, layout)];
   return (
     <>
       <div
@@ -71,14 +82,15 @@ function PlayerZone({ color, index }: { color: Color; index: number }) {
         <div
           key={i}
           className="royal-socket"
+          data-color={color}
           style={cellStyle({ col: origin.col + slot.col, row: origin.row + slot.row })}
         />
       ))}
     </>
   );
 }
-function TrackCell({ cell, index }: { cell: Cell; index: number }) {
-  const start = COLOR_ORDER.find((color) => START_OFFSET[color] === index);
+function TrackCell({ cell, index, layout }: { cell: Cell; index: number; layout: BoardLayout }) {
+  const start = COLOR_ORDER.find((color) => START_OFFSET[geometryColor(color, layout)] === index);
   return (
     <div
       className={`royal-cell ${SAFE_SQUARES.has(index) ? "royal-safe" : ""}`}
@@ -89,54 +101,63 @@ function TrackCell({ cell, index }: { cell: Cell; index: number }) {
     </div>
   );
 }
-function HomePath({ color }: { color: Color }) {
+function HomePath({ color, layout }: { color: Color; layout: BoardLayout }) {
+  const cells = HOME_COLUMN[geometryColor(color, layout)];
   return (
     <>
-      {HOME_COLUMN[color].map((cell, i) => (
+      {cells.map((cell, i) => (
         <div
           key={i}
           className="royal-cell royal-home"
           style={{ ...cellStyle(cell), ...colorStyle(color) }}
         >
-          {i === 5 && <span aria-hidden="true">❖</span>}
+          {i === cells.length - 1 && <span aria-hidden="true">❖</span>}
         </div>
       ))}
     </>
   );
 }
-function CenterArea() {
+function CenterArea({ layout }: { layout: BoardLayout }) {
   return (
-    <div className="royal-center" style={cellStyle({ col: 7, row: 7 })} aria-hidden="true">
+    <div className="royal-center" style={cellStyle({ col: 6, row: 6 }, 3)} aria-hidden="true">
       <svg viewBox="0 0 100 100">
-        <path d="M0 0L50 50L0 100Z" fill={ENAMEL.red} />
-        <path d="M0 0H100L50 50Z" fill={ENAMEL.green} />
-        <path d="M100 0V100L50 50Z" fill={ENAMEL.yellow} />
-        <path d="M0 100H100L50 50Z" fill={ENAMEL.blue} />
+        <path d="M0 0L50 50L0 100Z" fill={ENAMEL[layout.cornerToColor.tl]} />
+        <path d="M0 0H100L50 50Z" fill={ENAMEL[layout.cornerToColor.tr]} />
+        <path d="M100 0V100L50 50Z" fill={ENAMEL[layout.cornerToColor.br]} />
+        <path d="M0 100H100L50 50Z" fill={ENAMEL[layout.cornerToColor.bl]} />
         <path
           d="M0 0L100 100M0 100L100 0M50 5L95 50L50 95L5 50Z"
           fill="none"
-          stroke="#dfc48a"
+          stroke="var(--center-line)"
           strokeWidth="3"
         />
-        <path d="M50 28Q75 50 50 72Q25 50 50 28Z" fill="#dbc086" stroke="#6b4b20" />
+        <path
+          d="M50 28Q75 50 50 72Q25 50 50 28Z"
+          fill="var(--center-fill)"
+          stroke="var(--center-outline)"
+        />
       </svg>
     </div>
   );
 }
 /** Static geometry never receives the game state or animation ticks. */
-export const BoardArtwork = memo(function BoardArtwork() {
+export const BoardArtwork = memo(function BoardArtwork({
+  layout = DEFAULT_BOARD_LAYOUT,
+}: {
+  layout?: BoardLayout;
+}) {
   return (
     <div className="royal-artwork" aria-hidden="true">
       {COLOR_ORDER.map((color, i) => (
-        <PlayerZone key={color} color={color} index={i} />
+        <PlayerZone key={color} color={color} index={i} layout={layout} />
       ))}
       {TRACK.map((cell, i) => (
-        <TrackCell key={i} cell={cell} index={i} />
+        <TrackCell key={i} cell={cell} index={i} layout={layout} />
       ))}
       {COLOR_ORDER.map((color) => (
-        <HomePath key={color} color={color} />
+        <HomePath key={color} color={color} layout={layout} />
       ))}
-      <CenterArea />
+      <CenterArea layout={layout} />
     </div>
   );
 });

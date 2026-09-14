@@ -57,6 +57,7 @@ export interface Pending {
   tokenId: string;
   remaining: number;
   isReward: boolean;
+  finishStage?: "enter" | "settle";
 }
 
 export interface Settings {
@@ -79,6 +80,8 @@ export interface CaptureEvent {
 
 export interface GameState {
   schemaVersion: 1;
+  /** Absent in legacy saves whose private lane had six cells. */
+  homePathVersion?: 2;
   gameConfig: GameConfig;
   players: Player[];
   tokens: Token[];

@@ -104,7 +104,7 @@ describe("guidance notice lifecycle", () => {
   });
 
   it.each([false, true])(
-    "guidance=%s controls only the dice invitation, not roll access or turn labels",
+    "guidance=%s does not gate the current-player dice invitation, roll access or turn labels",
     (enabled) => {
       const state = createGame("4P", DEFAULT_HOUSE_RULES, {});
       state.settings.showMoveSuggestions = enabled;
@@ -119,7 +119,7 @@ describe("guidance notice lifecycle", () => {
           onRoll: () => {},
         }),
       );
-      expect(html).toContain(`data-waiting="${enabled}"`);
+      expect(html).toContain('data-waiting="true"');
       expect(html).toContain("Your turn");
       expect(html).not.toContain('disabled=""');
     },

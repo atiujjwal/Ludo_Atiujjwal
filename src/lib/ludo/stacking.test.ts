@@ -127,23 +127,48 @@ describe("stationary stop token and rear token rolling one", () => {
   });
 });
 
-describe("bounded independent stack hit regions", () => {
-  it("never overlaps hit regions or leaves the square for stacks of 1 to 16", () => {
-    for (let count = 1; count <= 16; count++) {
+describe("full-size overlapping stacks", () => {
+  it("keeps doubles full size and exposes their edges on opposite sides", () => {
+    expect([0, 1].map((i) => stackPlacement(i, 2))).toEqual([
+      { x: -0.08, y: 0, width: 1, height: 1 },
+      { x: 0.08, y: 0, width: 1, height: 1 },
+    ]);
+  });
+
+  it("each stacked counter retains its own token selection handler", () => {
+    const state = createGame("4P", DEFAULT_HOUSE_RULES, {});
+    state.phase = "select";
+    state.tokens.forEach((token) =>
+      Object.assign(token, {
+        state: "common",
+        steps: (8 - START_OFFSET[token.color] + 52) % 52,
+      }),
+    );
+    const onSelect = vi.fn();
+    for (const token of state.tokens) {
+      const button = piece(state, token.id, onSelect).props.children;
+      expect(button.props["data-stacked"]).toBe(true);
+      button.props.onClick();
+      expect(onSelect).toHaveBeenLastCalledWith(token.id);
+    }
+    expect(onSelect).toHaveBeenCalledTimes(16);
+  });
+
+  it("keeps full-size artwork inside the square with an exposed edge for every piece", () => {
+    for (let count = 2; count <= 16; count++) {
       const regions = Array.from({ length: count }, (_, i) => stackPlacement(i, count));
       regions.forEach((a, i) => {
-        expect(a.x).toBeGreaterThanOrEqual(0);
-        expect(a.y).toBeGreaterThanOrEqual(0);
-        expect(a.x + a.scale).toBeLessThanOrEqual(1);
-        expect(a.y + a.scale).toBeLessThanOrEqual(1);
-        for (const b of regions.slice(i + 1)) {
-          expect(
-            a.x + a.scale <= b.x ||
-              b.x + b.scale <= a.x ||
-              a.y + a.scale <= b.y ||
-              b.y + b.scale <= a.y,
-          ).toBe(true);
-        }
+        expect(a.width).toBe(1);
+        expect(a.height).toBe(1);
+        expect(Math.abs(a.x)).toBeLessThanOrEqual(0.08);
+        expect(Math.abs(a.y)).toBeLessThanOrEqual(0.08);
+        // The outward point lies inside this 42%-radius counter but outside
+        // every other counter: each token has a directly tappable crescent.
+        const length = Math.hypot(a.x, a.y);
+        const edge = { x: a.x + (a.x / length) * 0.4199, y: a.y + (a.y / length) * 0.4199 };
+        regions.forEach((b, j) => {
+          if (i !== j) expect(Math.hypot(edge.x - b.x, edge.y - b.y)).toBeGreaterThan(0.42);
+        });
       });
     }
   });
@@ -157,5 +182,15 @@ describe("bounded independent stack hit regions", () => {
     );
     expect(css).toMatch(/\.royal-piece-hit \*\s*\{\s*pointer-events: none/);
     expect(css.match(/\.royal-stack-outline\s*\{([^}]+)\}/)![1]).toContain("pointer-events: none");
+  });
+  it("raises playable artwork without resizing counters or moving stacked hit regions", () => {
+    const css = readFileSync(new URL("../../royal.css", import.meta.url), "utf8");
+    const raised = css.match(/\.royal-token\[data-visual="selectable"\]\s*\{([^}]+)\}/)![1];
+    expect(raised).toContain("translateY(-4%)");
+    expect(raised).toContain("var(--royal-shadow-deep)");
+    expect(raised).not.toMatch(/scale\(|animation:|width:|height:/);
+    expect(css).toMatch(
+      /\[data-stacked="true"\] \.royal-token\[data-visual="selectable"\]\s*\{[^}]*transform: none/,
+    );
   });
 });

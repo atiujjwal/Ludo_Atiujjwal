@@ -99,9 +99,9 @@ export function InstallButton() {
       <button
         type="button"
         onClick={() => void handleInstall()}
-        className="group flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-[var(--ludo-blue-dark)] text-sm font-black text-white transition-transform active:translate-y-0.5"
+        className="group flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-[var(--ludo-blue-dark)] text-sm font-black text-[var(--on-color)] transition-transform active:translate-y-0.5"
         style={{
-          background: "linear-gradient(160deg, #31517d, var(--ludo-blue-dark))",
+          background: "var(--install-surface)",
           boxShadow: "0 5px 0 0 var(--ludo-blue-dark), 0 12px 22px -14px var(--ludo-blue-dark)",
         }}
         aria-label="Install Ludo on this phone"

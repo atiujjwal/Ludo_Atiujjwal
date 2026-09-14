@@ -6,13 +6,23 @@ interface Props {
   item: ReturnType<typeof positionTokens>[number];
   legal: boolean;
   moving: boolean;
+  settling?: boolean;
   visual: TokenVisualState;
   label: string;
   skin: TokenSkin;
   onSelect: (id: string) => void;
 }
 
-export function BoardPiece({ item, legal, moving, visual, label, skin, onSelect }: Props) {
+export function BoardPiece({
+  item,
+  legal,
+  moving,
+  settling = false,
+  visual,
+  label,
+  skin,
+  onSelect,
+}: Props) {
   const { token, cell, offset } = item;
   return (
     <div
@@ -27,11 +37,14 @@ export function BoardPiece({ item, legal, moving, visual, label, skin, onSelect 
         className="royal-piece-hit"
         disabled={!legal}
         data-legal={legal}
+        data-stacked={item.count > 1}
+        data-settling={settling}
         style={{
-          left: `${offset.x * 100}%`,
-          top: `${offset.y * 100}%`,
-          width: `${offset.scale * 100}%`,
-          height: `${offset.scale * 100}%`,
+          left: 0,
+          top: 0,
+          transform: `translate(${offset.x * 100}%, ${offset.y * 100}%)`,
+          width: `${offset.width * 100}%`,
+          height: `${offset.height * 100}%`,
         }}
         onClick={() => onSelect(token.id)}
         aria-label={label}
