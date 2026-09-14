@@ -1,0 +1,525 @@
+/* Project-owned CSS/SVG craftsmanship: no image textures or remote fonts. */
+:root[data-appearance="royal"] {
+  color-scheme: dark;
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --background: #171815;
+  --board: #24251f;
+  --board-edge: #ad905c;
+  --ink: #f2e8d2;
+  --safe: #3e3828;
+  --elev-1: 0 3px 8px #0005, inset 0 1px #e9ce9120;
+  --elev-2: 0 8px 20px -8px #000b;
+  --elev-3: 0 16px 32px -12px #000c;
+  --foreground: #f2e8d2;
+  --card: #24251f;
+  --card-foreground: #f2e8d2;
+  --popover: #292920;
+  --popover-foreground: #f2e8d2;
+  --primary: #d6b879;
+  --primary-foreground: #241a0b;
+  --secondary: #343326;
+  --secondary-foreground: #f2e8d2;
+  --muted: #302f26;
+  --muted-foreground: #bdb49f;
+  --accent: #423b28;
+  --accent-foreground: #fff0cb;
+  --destructive: #ef8492;
+  --border: #63543a;
+  --input: #726243;
+  --ring: #e9ce91;
+  --ludo-red: #ad3955;
+  --ludo-red-light: #ef9aae;
+  --ludo-red-dark: #66192e;
+  --ludo-red-soft: #38202b;
+  --ludo-green: #329879;
+  --ludo-green-light: #8cd6b8;
+  --ludo-green-dark: #0c4939;
+  --ludo-green-soft: #19372c;
+  --ludo-blue: #507bc4;
+  --ludo-blue-light: #a6c7ff;
+  --ludo-blue-dark: #1a376c;
+  --ludo-blue-soft: #232e43;
+  --ludo-yellow: #d2a044;
+  --ludo-yellow-light: #f5d992;
+  --ludo-yellow-dark: #75501c;
+  --ludo-yellow-soft: #40341e;
+  --shadow-card: 0 8px 24px -12px #000b, inset 0 1px #e9ce9120;
+  --shadow-lifted: 0 12px 26px -12px #000c;
+}
+html[data-appearance="royal"] body {
+  min-width: 280px;
+  background: radial-gradient(ellipse at 50% 0, #60503135, transparent 65%), var(--background);
+}
+[data-appearance="royal"] h1,
+[data-appearance="royal"] h2,
+[data-appearance="royal"] h3 {
+  font-family: var(--font-display);
+}
+button,
+a {
+  touch-action: manipulation;
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid #ffe5a0;
+  outline-offset: 3px;
+}
+/* Defaults belong in the base layer so page spacing utilities can override them. */
+@layer base {
+  main {
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+}
+.royal-setup-screen {
+  padding-top: max(1.5rem, env(safe-area-inset-top));
+  padding-bottom: 0;
+}
+.royal-setup-actions {
+  /* Sticky stays in document flow: its own height always reserves scroll space. */
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+}
+.royal-setup-screen input {
+  scroll-margin-block: 1rem calc(8rem + env(safe-area-inset-bottom));
+}
+/* Do not float the action bar over fields when editing with a mobile keyboard. */
+.royal-setup-screen:has(input:focus) .royal-setup-actions {
+  position: static;
+}
+.royal-eyebrow {
+  color: #d6b879;
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+.royal-menu-title {
+  color: #efdbab;
+  text-shadow: 0 2px 1px #0008;
+}
+.royal-divider {
+  width: 80px;
+  height: 1px;
+  margin: 12px auto;
+  background: linear-gradient(90deg, transparent, #d6b879, transparent);
+}
+.royal-board {
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 1.3%;
+  border-radius: 5%;
+  background: linear-gradient(135deg, #fff0ba, #99763d 22%, #f0d596 45%, #775329 78%, #d1b576);
+  box-shadow:
+    inset 0 0 0 1px #e9d4a0,
+    0 15px 32px -14px #000c;
+}
+.royal-grid {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 3.8%;
+  background: #171b1c;
+  container-type: inline-size;
+}
+.royal-artwork,
+.royal-effects {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.royal-zone {
+  position: absolute;
+  background-color: var(--enamel);
+  background-image:
+    radial-gradient(ellipse at 30% 20%, #ffffff12, transparent 55%),
+    repeating-linear-gradient(32deg, #00000005 0 1px, #ffffff05 1px 3px),
+    radial-gradient(ellipse, transparent 40%, #0008);
+  box-shadow:
+    inset 0 0 0 max(1px, 0.24cqw) #c4a66e,
+    inset 0 0 16px #0008;
+}
+.royal-courtyard {
+  position: absolute;
+  inset: 15%;
+  border: max(1px, 0.32cqw) solid #cfb47a;
+  border-radius: 2%;
+  box-shadow:
+    0 2px 3px #0008,
+    inset 0 1px 3px #0008;
+}
+.royal-motif {
+  position: absolute;
+  width: 25%;
+  height: 25%;
+  top: 37.5%;
+  left: 37.5%;
+  color: #dec18a;
+  opacity: 0.75;
+}
+.royal-socket {
+  position: absolute;
+  border-radius: 50%;
+  border: max(1px, 0.25cqw) solid #c2a371;
+  background: radial-gradient(circle at 60% 70%, #ffffff09, #0009);
+  box-shadow:
+    inset 0 2px 3px #0008,
+    0 1px 1px #f9df9e55;
+  transform: scale(0.94);
+}
+.royal-cell {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border: max(0.5px, 0.12cqw) solid #c7aa70;
+  background:
+    linear-gradient(135deg, transparent 38%, #d8e1e211 40%, transparent 42%),
+    linear-gradient(25deg, transparent 56%, #f0eade14 58%, transparent 61%),
+    linear-gradient(145deg, #35383a, #222628);
+}
+.royal-cell:nth-child(3n) {
+  background-position:
+    4px 8px,
+    -9px 2px,
+    0 0;
+}
+.royal-cell > span {
+  color: #e4c88d;
+  font-size: 3cqw;
+  line-height: 1;
+}
+.royal-safe {
+  box-shadow: inset 0 0 0 1px #eed08b;
+  background-color: #3e3828;
+}
+.royal-home,
+.royal-cell[data-start] {
+  background: radial-gradient(ellipse at 30% 20%, #ffffff15, #0005), var(--enamel);
+}
+.royal-center {
+  position: absolute;
+  border: 1px solid #e0c080;
+}
+.royal-center svg {
+  width: 100%;
+  height: 100%;
+}
+.royal-zone-state {
+  position: absolute;
+  pointer-events: none;
+}
+.royal-zone-state[data-unused="true"] {
+  background: #17181588;
+}
+.royal-zone-state[data-active="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 14%;
+  border: 2px solid #ffe4aa;
+  box-shadow: 0 0 8px #ffdea655;
+  animation: royal-arrival 0.55s ease-out;
+}
+.royal-blockade {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+  border: 2px double #efcd8b;
+  box-shadow: inset 0 0 0 1px #241c12;
+}
+.royal-destination {
+  position: absolute;
+  pointer-events: none;
+  z-index: 8;
+  border: 2px solid #fff0ad;
+  border-radius: 15%;
+  background: #f4d67d25;
+}
+.royal-destination[data-alternative="true"] {
+  border-style: dashed;
+  background: #dbbaff20;
+  border-color: #dbc7ff;
+}
+.royal-piece-position {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(100% / 15);
+  height: calc(100% / 15);
+  transform-origin: top left;
+  pointer-events: none;
+  z-index: 20;
+}
+.royal-piece-hit {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.royal-piece-hit:disabled,
+.royal-piece-hit * {
+  pointer-events: none;
+}
+.royal-piece-position[data-interactive="true"],
+.royal-piece-position:focus-within {
+  z-index: 30;
+}
+.royal-piece-position[data-moving="true"] {
+  z-index: 35;
+  transition: transform 120ms linear;
+}
+.royal-stack-outline {
+  position: absolute;
+  pointer-events: none;
+  z-index: 6;
+  border: 1px solid #ead6a680;
+  border-radius: 18%;
+  box-shadow: inset 0 0 0 2px #211e1860;
+}
+.royal-token {
+  display: inline-grid;
+  position: relative;
+  aspect-ratio: 1;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.royal-token svg {
+  height: 100%;
+  width: 100%;
+  overflow: visible;
+}
+.royal-token[data-visual="ghost"] {
+  opacity: 0.5;
+}
+.royal-token[data-visual="home"] {
+  opacity: 0.85;
+}
+.royal-token[data-visual="safe"]::after {
+  content: "";
+  position: absolute;
+  inset: 4%;
+  border: 1px solid #f4dba3;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.royal-selection-ring {
+  position: absolute;
+  inset: 1%;
+  border: 2px solid #fff5c7;
+  border-radius: 50%;
+  box-shadow: 0 0 5px #ffdc85;
+  animation: royal-ring 1.2s ease-in-out 3;
+  pointer-events: none;
+}
+.royal-wall-mark {
+  position: absolute;
+  bottom: 4%;
+  right: 3%;
+  color: #21190e;
+  background: #f4d99b;
+  border-radius: 3px;
+  padding: 0 2px;
+  font: bold 9px system-ui;
+}
+.royal-dice {
+  border: 2px solid #c3a36b;
+  color: #302417;
+  background: linear-gradient(135deg, #fff9e9, #dfcda7);
+  box-shadow:
+    inset 0 -3px 0 #b4a07d,
+    0 3px 8px #0006;
+}
+.royal-dice[data-lit="true"] {
+  outline: 2px solid var(--dice-accent);
+  outline-offset: 2px;
+}
+.royal-dice[data-lit="false"] {
+  opacity: 0.65;
+}
+.royal-dice[data-rolling="true"] {
+  animation: royal-roll 0.31s ease-in-out 2;
+}
+.royal-dice[data-waiting="true"] {
+  animation: royal-ring 1.2s ease-in-out 2;
+}
+.royal-dice-pip {
+  background: radial-gradient(circle at 35% 30%, #715632, #281d12);
+  box-shadow: inset 0 1px 1px #0006;
+}
+.royal-player-panel {
+  background: linear-gradient(130deg, #3b3829, #24251f);
+  border: 1px solid #80704a;
+}
+.royal-move-picker {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+.royal-move-picker button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 44px;
+  min-width: 64px;
+  padding: 4px 7px;
+  border: 1px solid #bda16a;
+  border-radius: 12px;
+  background: #302c20;
+  color: #f6e4bd;
+  font-size: 12px;
+  font-weight: 600;
+}
+.royal-move-picker button:active {
+  background: #50422a;
+}
+.royal-route-legend {
+  text-align: center;
+  font-size: 11px;
+  color: #dbc7ff;
+  margin-top: 8px;
+}
+.royal-effects {
+  z-index: 40;
+}
+.royal-capture {
+  position: absolute;
+  border: 3px solid #ffe1a0;
+  border-radius: 50%;
+  animation: royal-burst 0.55s ease-out forwards;
+}
+.royal-home-burst {
+  position: absolute;
+  color: #ffe5a0;
+  text-align: center;
+  font-size: 5cqw;
+  animation: royal-burst 0.8s ease-out forwards;
+}
+.royal-game-screen {
+  max-width: 580px;
+  min-height: 100dvh;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  padding: max(12px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  gap: 16px;
+}
+.royal-game-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 10px;
+  margin-block: auto;
+  width: 100%;
+}
+.royal-game-board {
+  grid-column: span 2;
+  order: 3;
+  width: 100%;
+  min-width: 0;
+}
+.royal-offline-status {
+  margin: 12px auto;
+  max-width: 28rem;
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.royal-offline-status button {
+  min-height: 44px;
+  padding: 6px 12px;
+  color: #edcf91;
+  text-decoration: underline;
+}
+@media (min-width: 1024px) {
+  .royal-game-screen {
+    max-width: 1160px;
+  }
+  .royal-game-layout {
+    grid-template-columns: minmax(150px, 1fr) minmax(0, 740px) minmax(150px, 1fr);
+    gap: 16px;
+  }
+  .royal-game-board {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+}
+@media (max-width: 430px) {
+  .royal-player-panel {
+    padding: 8px;
+    gap: 7px;
+  }
+  .royal-player-panel > .royal-token {
+    display: none;
+  }
+  .royal-game-screen > div:first-child {
+    gap: 4px;
+  }
+  .royal-game-screen > div:first-child p {
+    font-size: 11px;
+    padding-inline: 8px;
+    white-space: normal;
+    text-align: center;
+  }
+}
+@keyframes royal-ring {
+  50% {
+    opacity: 0.72;
+    transform: scale(0.96);
+  }
+}
+@keyframes royal-arrival {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes royal-roll {
+  25% {
+    transform: rotate(-12deg);
+  }
+  75% {
+    transform: rotate(12deg);
+  }
+}
+@keyframes royal-burst {
+  from {
+    opacity: 1;
+    transform: scale(0.65);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.65);
+  }
+}
+[data-page-hidden="true"] *,
+[data-page-hidden="true"] *::before,
+[data-page-hidden="true"] *::after {
+  animation-play-state: paused !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  .royal-capture,
+  .royal-home-burst {
+    display: none;
+  }
+}

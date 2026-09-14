@@ -41,7 +41,12 @@ const MODES: { id: Mode; label: string; detail: string; seats: number }[] = [
   { id: "2V2", label: "2 vs 2", detail: "Teams of two", seats: 4 },
 ];
 
-const RULE_ICON = { exitOnOne: Dices, secondLap: Repeat, cutReward: Swords, threeSixesVariant: Sparkles };
+const RULE_ICON = {
+  exitOnOne: Dices,
+  secondLap: Repeat,
+  cutReward: Swords,
+  threeSixesVariant: Sparkles,
+};
 
 export const HOUSE_RULE_COPY: {
   key: keyof HouseRules;
@@ -64,14 +69,14 @@ export const HOUSE_RULE_COPY: {
   {
     key: "cutReward",
     title: "Cut Reward",
-    short: "Cutting earns you a bonus.",
-    text: "Cut an opponent and pick a reward: bring out a new piece, jump a piece 6 spaces, or roll again.",
+    short: "Optional bonus before your capture roll.",
+    text: "Every opponent cut already earns another roll. With this on, first bring out a new piece or move a piece 6 spaces, or choose Roll again to take your earned roll immediately. These choices do not double the earned roll.",
   },
   {
     key: "threeSixesVariant",
     title: "Three 6s Variant",
     short: "The third six still counts as a move.",
-    text: "Roll three 6s in a row and the third plays as a normal move instead of losing your turn — unless it cuts someone or gets a piece home, in which case you roll again.",
+    text: "Normally the third consecutive 6 skips your turn before moving. With this on, play the third 6, then end your turn unless the move cuts an opponent or reaches home. Either exception earns another roll and starts a fresh six streak.",
   },
 ];
 
@@ -104,6 +109,7 @@ function SetupScreen() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [names, setNames] = useState<Partial<Record<Color, string>>>({});
   const [claimed, setClaimed] = useState<Color[]>([]);
+  const [showMoveSuggestions, setShowMoveSuggestions] = useState(false);
 
   const seats = mode ? MODE_COLORS[mode].length : 0;
   const fixedColors = mode === "4P" || mode === "2V2";
@@ -128,14 +134,13 @@ function SetupScreen() {
     );
   };
 
-
   return (
-    <main className="mx-auto w-full max-w-md px-5 pb-28 pt-6">
+    <main className="royal-setup-screen mx-auto w-full max-w-md px-5 pt-6">
       <div className="mb-6 flex items-center gap-2">
         <Link
           to="/"
           aria-label="Back to menu"
-          className="grid h-11 w-11 place-items-center rounded-full bg-white shadow-[var(--elev-1)]"
+          className="grid h-11 w-11 place-items-center rounded-full bg-card shadow-[var(--elev-1)]"
         >
           <ChevronLeft className="h-5 w-5" />
         </Link>
@@ -143,7 +148,10 @@ function SetupScreen() {
       </div>
 
       <section aria-labelledby="mode-heading">
-        <h2 id="mode-heading" className="mb-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
+        <h2
+          id="mode-heading"
+          className="mb-3 text-xs font-black uppercase tracking-widest text-muted-foreground"
+        >
           Who's playing
         </h2>
         <div className="grid grid-cols-2 gap-3">
@@ -156,7 +164,7 @@ function SetupScreen() {
                 onClick={() => chooseMode(m.id)}
                 aria-pressed={on}
                 className={cn(
-                  "flex min-h-[5rem] items-center gap-2.5 rounded-2xl bg-white p-3 text-left transition-all duration-200",
+                  "flex min-h-[5rem] items-center gap-2.5 rounded-2xl bg-card p-3 text-left transition-all duration-200",
                   on ? "-translate-y-0.5 scale-[1.02]" : "active:translate-y-0.5",
                 )}
                 style={{
@@ -181,7 +189,10 @@ function SetupScreen() {
 
       {mode && !fixedColors && (
         <section aria-labelledby="claim-heading" className="mt-8">
-          <h2 id="claim-heading" className="mb-1 text-xs font-black uppercase tracking-widest text-muted-foreground">
+          <h2
+            id="claim-heading"
+            className="mb-1 text-xs font-black uppercase tracking-widest text-muted-foreground"
+          >
             Claim your colour
           </h2>
           <p className="mb-3 text-sm text-muted-foreground">
@@ -204,7 +215,7 @@ function SetupScreen() {
                   aria-pressed={taken}
                   aria-label={`${COLOR_LABEL[color]}${taken ? ` — claimed as player ${index + 1}` : full ? " — unavailable" : ""}`}
                   className={cn(
-                    "relative grid flex-1 place-items-center rounded-2xl bg-white p-2.5 transition-all duration-200",
+                    "relative grid flex-1 place-items-center rounded-2xl bg-card p-2.5 transition-all duration-200",
                     taken && "-translate-y-1",
                     full && "opacity-35",
                   )}
@@ -215,14 +226,6 @@ function SetupScreen() {
                   }}
                 >
                   <Token color={color} visual={taken ? "idle" : "ghost"} className="w-full" />
-                  {taken && (
-                    <span
-                      className="absolute -right-1 -top-1 grid h-6 w-6 animate-[ludo-pop_0.25s_ease-out] place-items-center rounded-full text-xs font-black text-white"
-                      style={{ background: PALETTE[color].dark }}
-                    >
-                      {index + 1}
-                    </span>
-                  )}
                 </button>
               );
             })}
@@ -230,8 +233,49 @@ function SetupScreen() {
         </section>
       )}
 
+      <section aria-labelledby="display-heading" className="mt-8">
+        <h2
+          id="display-heading"
+          className="mb-3 text-xs font-black uppercase tracking-widest text-muted-foreground"
+        >
+          Display options
+        </h2>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={showMoveSuggestions}
+          aria-labelledby="suggestions-label"
+          aria-describedby="suggestions-description"
+          onClick={() => setShowMoveSuggestions((on) => !on)}
+          className="flex min-h-16 w-full items-center justify-between gap-3 rounded-2xl border border-border bg-card p-3.5 text-left"
+        >
+          <span className="min-w-0">
+            <span id="suggestions-label" className="block font-bold">
+              Move suggestions
+            </span>
+            <span id="suggestions-description" className="block text-xs text-muted-foreground">
+              Show turn tips and legal moves. Off by default.
+            </span>
+          </span>
+          <span
+            className={cn(
+              "shrink-0 rounded-full px-3 py-1 text-sm font-bold",
+              showMoveSuggestions
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-muted-foreground",
+            )}
+            aria-hidden
+          >
+            {showMoveSuggestions ? "On" : "Off"}
+          </span>
+        </button>
+      </section>
+
       <section aria-labelledby="hr-heading" className="mt-8">
-        <h2 id="hr-heading" className="mb-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
+        <h2
+          id="hr-heading"
+          className="mb-3 text-xs font-black uppercase tracking-widest text-muted-foreground"
+        >
           House rules
         </h2>
         <div className="space-y-3">
@@ -243,15 +287,15 @@ function SetupScreen() {
                 key={rule.key}
                 className="rounded-2xl p-3.5 transition-all duration-200"
                 style={{
-                  background: on ? "var(--ludo-green-soft)" : "white",
+                  background: on ? "var(--ludo-green-soft)" : "var(--card)",
                   boxShadow: on
                     ? "0 0 0 0.14rem var(--ludo-green), var(--elev-1)"
                     : "0 0 0 1px rgba(60,40,15,0.1)",
                 }}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <span
-                    className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
+                    className="hidden h-10 w-10 shrink-0 place-items-center rounded-xl min-[380px]:grid"
                     style={{
                       background: on ? "var(--ludo-green)" : "var(--secondary)",
                       color: on ? "white" : "var(--muted-foreground)",
@@ -261,7 +305,9 @@ function SetupScreen() {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-black">{rule.title}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{rule.short}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {rule.short}
+                    </span>
                   </span>
                   <button
                     type="button"
@@ -280,11 +326,11 @@ function SetupScreen() {
                       playSfx(on ? "modalClose" : "turnChange");
                       setRules((r) => ({ ...r, [rule.key]: !on }));
                     }}
-                    className="relative h-8 w-14 shrink-0 rounded-full transition-colors duration-200"
-                    style={{ background: on ? "var(--ludo-green)" : "rgba(60,40,15,0.18)" }}
+                    className="relative h-11 w-14 shrink-0 rounded-full border border-border transition-colors duration-200"
+                    style={{ background: on ? "var(--ludo-green)" : "var(--secondary)" }}
                   >
                     <span
-                      className="absolute top-1 grid h-6 w-6 place-items-center rounded-full bg-white shadow transition-all duration-200"
+                      className="absolute top-2 grid h-6 w-6 place-items-center rounded-full bg-primary shadow transition-transform duration-200"
                       style={{ left: on ? "1.75rem" : "0.25rem" }}
                     >
                       {on && <Check className="h-3.5 w-3.5 text-[var(--ludo-green)]" />}
@@ -302,16 +348,22 @@ function SetupScreen() {
 
       {mode && roster.length > 0 && (
         <section aria-labelledby="names-heading" className="mt-8">
-          <h2 id="names-heading" className="mb-3 text-xs font-black uppercase tracking-widest text-muted-foreground">
+          <h2
+            id="names-heading"
+            className="mb-3 text-xs font-black uppercase tracking-widest text-muted-foreground"
+          >
             Names
           </h2>
           <div className="space-y-3">
             {roster.map((color, i) => (
               <label key={color} className="flex items-center gap-3">
+                <span className="sr-only">
+                  Player {i + 1} ({COLOR_LABEL[color]}) name
+                </span>
                 <Token color={color} className="h-10 w-10 shrink-0" />
                 <Input
                   maxLength={12}
-                  className="h-12 rounded-xl bg-white"
+                  className="h-12 min-w-0 rounded-xl bg-card text-base md:text-base"
                   placeholder={`Player ${i + 1} (${COLOR_LABEL[color]})${
                     mode === "2V2" ? ` · Team ${TEAMS[color]}` : ""
                   }`}
@@ -326,7 +378,7 @@ function SetupScreen() {
         </section>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 mx-auto max-w-md bg-gradient-to-t from-background via-background to-transparent px-5 pb-5 pt-6">
+      <div className="royal-setup-actions bg-gradient-to-t from-background via-background to-transparent">
         <Button
           className="h-16 w-full rounded-2xl text-xl font-black"
           disabled={!ready}
@@ -334,11 +386,22 @@ function SetupScreen() {
             if (!mode || !ready) return;
             unlockAudio();
             playSfx("turnChange");
-            dispatch({ type: "START", mode, houseRules: rules, nicknames: names, colors: roster });
+            dispatch({
+              type: "START",
+              mode,
+              houseRules: rules,
+              nicknames: names,
+              colors: roster,
+              showMoveSuggestions,
+            });
             void navigate({ to: "/game" });
           }}
         >
-          {ready ? "Start game" : mode ? `Pick ${seats - roster.length} more colour(s)` : "Choose a mode"}
+          {ready
+            ? "Start game"
+            : mode
+              ? `Pick ${seats - roster.length} more colour(s)`
+              : "Choose a mode"}
         </Button>
       </div>
     </main>

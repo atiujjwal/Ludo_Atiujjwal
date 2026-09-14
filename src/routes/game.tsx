@@ -12,6 +12,11 @@ import { PALETTE } from "@/lib/ludo/palette";
 import { useGame } from "@/lib/ludo/store";
 import { playSfx, unlockAudio, vibrate } from "@/lib/ludo/audio";
 import { hasSave } from "@/lib/ludo/persistence";
+import {
+  createGuidanceNotices,
+  GAME_GUIDANCE_TOAST_ID,
+  guidanceEnabled,
+} from "@/lib/ludo/guidance";
 import { COLOR_CORNER, type Corner } from "@/lib/ludo/board";
 import type { Color } from "@/lib/ludo/types";
 
@@ -40,7 +45,14 @@ function GameScreen() {
   const { state, dispatch } = useGame();
   const navigate = useNavigate();
   const [rolling, setRolling] = useState(false);
-  const lastMessage = useRef(0);
+  const guidance = guidanceEnabled(state.settings);
+  const [notices] = useState(() =>
+    createGuidanceNotices(state.messageId, {
+      show: (message) => toast(message, { id: GAME_GUIDANCE_TOAST_ID }),
+      dismiss: () => toast.dismiss(GAME_GUIDANCE_TOAST_ID),
+      sound: () => playSfx("skipTurn"),
+    }),
+  );
   const [ready, setReady] = useState(false);
   const [celebrate, setCelebrate] = useState<{ color: Color; id: number } | null>(null);
   const homeCount = useRef(0);
@@ -56,12 +68,10 @@ function GameScreen() {
   }, []);
 
   useEffect(() => {
-    if (state.messageId !== lastMessage.current && state.message) {
-      lastMessage.current = state.messageId;
-      if (state.settings.notificationsOn) toast(state.message);
-      playSfx("skipTurn");
-    }
-  }, [state.messageId, state.message, state.settings.notificationsOn]);
+    notices.update(state.messageId, state.message, guidance);
+  }, [notices, state.messageId, state.message, guidance]);
+
+  useEffect(() => () => notices.dispose(), [notices]);
 
   // Local celebration whenever a piece reaches the goal.
   useEffect(() => {
@@ -156,7 +166,7 @@ function GameScreen() {
   };
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col gap-2 px-3 py-3 lg:max-w-5xl">
+    <main className="royal-game-screen">
       <div className="flex items-center justify-between gap-2">
         <Button
           variant="ghost"
@@ -167,31 +177,31 @@ function GameScreen() {
         >
           <LogOut className="h-5 w-5" />
         </Button>
-        <p
-          className="truncate rounded-full px-4 py-1.5 text-sm font-bold"
-          style={{
-            background: PALETTE[acting].soft,
-            color: PALETTE[acting].dark,
-            boxShadow: `0 0 0 2px ${PALETTE[acting].base}`,
-          }}
-        >
-          {status}
-        </p>
+        {guidance && (
+          <p
+            className="truncate rounded-full px-4 py-1.5 text-sm font-bold"
+            style={{
+              background: PALETTE[acting].soft,
+              color: PALETTE[acting].light,
+              boxShadow: `0 0 0 2px ${PALETTE[acting].base}`,
+            }}
+          >
+            {status}
+          </p>
+        )}
         <div className="flex items-center">
           <Button
             variant="ghost"
             size="icon"
             className="min-h-11 min-w-11"
-            aria-label={
-              state.settings.notificationsOn ? "Turn off game notices" : "Turn on game notices"
-            }
-            onClick={() => dispatch({ type: "TOGGLE_SETTING", key: "notificationsOn" })}
+            aria-label={guidance ? "Turn off move suggestions" : "Turn on move suggestions"}
+            aria-pressed={guidance}
+            onClick={() => {
+              if (guidance) notices.dispose();
+              dispatch({ type: "TOGGLE_SETTING", key: "showMoveSuggestions" });
+            }}
           >
-            {state.settings.notificationsOn ? (
-              <Bell className="h-5 w-5" />
-            ) : (
-              <BellOff className="h-5 w-5 opacity-60" />
-            )}
+            {guidance ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5 opacity-60" />}
           </Button>
           <Button
             variant="ghost"
@@ -200,16 +210,20 @@ function GameScreen() {
             aria-label={state.settings.soundOn ? "Mute sound" : "Unmute sound"}
             onClick={() => dispatch({ type: "TOGGLE_SETTING", key: "soundOn" })}
           >
-            {state.settings.soundOn ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+            {state.settings.soundOn ? (
+              <Volume2 className="h-5 w-5" />
+            ) : (
+              <VolumeX className="h-5 w-5" />
+            )}
           </Button>
         </div>
       </div>
 
-      <div className="my-auto grid grid-cols-2 items-center gap-2 lg:grid-cols-[minmax(11rem,15rem)_auto_minmax(11rem,15rem)] lg:place-content-center lg:gap-5">
+      <div className="royal-game-layout">
         {seat("tl", "order-1 lg:col-start-1 lg:row-start-1")}
         {seat("tr", "order-2 lg:col-start-3 lg:row-start-1")}
 
-        <div className="order-3 col-span-2 mx-auto w-full max-w-[min(100%,calc(100dvh-15rem))] lg:col-span-1 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:w-[min(46vw,calc(100dvh-8rem))] lg:max-w-none">
+        <div className="royal-game-board">
           <LudoBoard
             state={state}
             selectableTokenIds={selectable}
@@ -231,4 +245,3 @@ function GameScreen() {
     </main>
   );
 }
-

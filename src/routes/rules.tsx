@@ -35,10 +35,15 @@ function RulesGuide() {
         <h2 className="font-display text-xl">Standard rules</h2>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Roll a 6 to bring a token out. Move your tokens around the board toward home. Land on an
-          opponent to send them back to base — unless they're on a star square, which is safe. Get
-          all 4 tokens home first (or your whole team, in 2v2) to win. Roll a 6 and you get another
-          turn. No legal move? Your turn is skipped automatically. You need the exact roll to land a
-          token in its final home square.
+          lone opponent on an unsafe square to send them back to base and earn another roll. Start
+          squares and stars are safe: pieces there cannot be cut. Your own pieces and teammates
+          stack without cutting or earning a capture bonus. Two or more same-colour pieces on an
+          unsafe square form a blockade that opponents cannot land on or pass. Get all 4 tokens home
+          first (or your whole team, in 2v2) to win. A 6 or reaching home also earns another roll; a
+          six and a cut together grant one roll, not two. Normally the third consecutive 6 skips
+          your turn before moving. No legal move? Your turn ends, except that a first or second
+          consecutive 6 still grants another roll. You need the exact roll to land a token in its
+          final home square.
         </p>
       </section>
 

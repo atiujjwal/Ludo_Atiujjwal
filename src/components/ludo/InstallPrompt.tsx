@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Download, MoreVertical, Plus, Share2 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { OfflineStatus } from "./OfflineStatus";
 
 type DeferredPrompt = Event & {
   prompt: () => Promise<void>;
@@ -9,19 +10,6 @@ type DeferredPrompt = Event & {
 };
 
 type MobilePlatform = "android" | "ios" | null;
-
-function blockedHost(hostname: string): boolean {
-  return (
-    hostname.startsWith("id-preview--") ||
-    hostname.startsWith("preview--") ||
-    hostname === "lovableproject.com" ||
-    hostname.endsWith(".lovableproject.com") ||
-    hostname === "lovableproject-dev.com" ||
-    hostname.endsWith(".lovableproject-dev.com") ||
-    hostname === "beta.lovable.dev" ||
-    hostname.endsWith(".beta.lovable.dev")
-  );
-}
 
 function mobilePlatform(): MobilePlatform {
   if (typeof navigator === "undefined") return null;
@@ -50,7 +38,11 @@ export function InstallButton() {
   const [deferredPrompt, setDeferredPrompt] = useState<DeferredPrompt | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined" || blockedHost(window.location.hostname)) return;
+    if (typeof window === "undefined" || !import.meta.env.PROD || window.self !== window.top) {
+      return;
+    }
+
+    if (new URL(window.location.href).searchParams.get("sw") === "off") return;
 
     if (isStandalone()) {
       setInstalled(true);
@@ -109,8 +101,7 @@ export function InstallButton() {
         onClick={() => void handleInstall()}
         className="group flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-[var(--ludo-blue-dark)] text-sm font-black text-white transition-transform active:translate-y-0.5"
         style={{
-          background:
-            "linear-gradient(160deg, var(--ludo-blue-light), var(--ludo-blue) 55%, var(--ludo-blue-dark))",
+          background: "linear-gradient(160deg, #31517d, var(--ludo-blue-dark))",
           boxShadow: "0 5px 0 0 var(--ludo-blue-dark), 0 12px 22px -14px var(--ludo-blue-dark)",
         }}
         aria-label="Install Ludo on this phone"
@@ -120,8 +111,8 @@ export function InstallButton() {
       </button>
 
       <Dialog open={showHelp} onOpenChange={setShowHelp}>
-        <DialogContent className="w-[calc(100%-2rem)] max-w-sm rounded-[2rem] border-0 bg-[var(--board)] p-6 shadow-[var(--elev-3)]">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-[var(--elev-2)]">
+        <DialogContent className="w-[calc(100%-2rem)] max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-[2rem] border-border bg-card p-6 shadow-[var(--elev-3)] [&>button:last-child]:min-h-11 [&>button:last-child]:min-w-11">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-card shadow-[var(--elev-2)]">
             <img src="/logo.png" alt="" className="h-14 w-14 rounded-xl" />
           </div>
           <div className="text-center">
@@ -148,9 +139,9 @@ export function InstallButton() {
             ).map(({ icon: Icon, text }, index) => (
               <li
                 key={text}
-                className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-[var(--elev-1)]"
+                className="flex items-center gap-3 rounded-2xl bg-card p-3 shadow-[var(--elev-1)]"
               >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ludo-blue-soft)] font-black text-[var(--ludo-blue-dark)]">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ludo-blue-soft)] font-black text-[var(--ludo-blue-light)]">
                   {index + 1}
                 </span>
                 <span className="flex-1 text-sm font-bold text-[var(--ink)]">{text}</span>
@@ -158,6 +149,7 @@ export function InstallButton() {
               </li>
             ))}
           </ol>
+          <OfflineStatus />
         </DialogContent>
       </Dialog>
     </>

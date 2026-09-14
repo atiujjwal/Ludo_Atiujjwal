@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useGame } from "@/lib/ludo/store";
 import { clearSave } from "@/lib/ludo/persistence";
+import { guidanceEnabled } from "@/lib/ludo/guidance";
 import { playSfx } from "@/lib/ludo/audio";
 
 export const Route = createFileRoute("/settings")({
@@ -67,10 +68,10 @@ function SettingsScreen() {
           />
         </label>
         <label className="flex min-h-[3.5rem] items-center justify-between rounded-2xl bg-card px-4 shadow-sm">
-          <span className="font-semibold">In-game notices</span>
+          <span className="font-semibold">Move suggestions</span>
           <Switch
-            checked={mounted ? Boolean(state.settings.notificationsOn) : false}
-            onCheckedChange={() => dispatch({ type: "TOGGLE_SETTING", key: "notificationsOn" })}
+            checked={mounted ? guidanceEnabled(state.settings) : false}
+            onCheckedChange={() => dispatch({ type: "TOGGLE_SETTING", key: "showMoveSuggestions" })}
           />
         </label>
       </div>

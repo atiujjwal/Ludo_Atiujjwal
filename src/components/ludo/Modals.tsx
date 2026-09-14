@@ -5,20 +5,27 @@ import { Token } from "@/components/ludo/Token";
 import { COLOR_ORDER } from "@/lib/ludo/board";
 import { PALETTE } from "@/lib/ludo/palette";
 
-import { controllingColor, getLegalMoves, moveIsBlocked, tokensOf } from "@/lib/ludo/engine";
+import { canContinueSecondLap, controllingColor, getLegalMoves, tokensOf } from "@/lib/ludo/engine";
 import type { Action } from "@/lib/ludo/store";
 import { playSfx } from "@/lib/ludo/audio";
 import type { GameState } from "@/lib/ludo/types";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 function Sheet({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm animate-in zoom-in-95 fade-in rounded-3xl bg-card p-6 shadow-2xl">
-        <h2 className="font-display text-2xl">{title}</h2>
+    <Dialog open>
+      <DialogContent
+        className="w-[calc(100%-2rem)] max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-3xl border-border bg-card p-6 shadow-2xl [&>button:last-child]:hidden"
+        aria-describedby={undefined}
+        onEscapeKeyDown={(event) => event.preventDefault()}
+        onPointerDownOutside={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
+        <DialogTitle className="font-display text-2xl">{title}</DialogTitle>
         <div className="mt-4 space-y-3">{children}</div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -31,6 +38,9 @@ export function GameModals({ state, dispatch }: Props) {
   const navigate = useNavigate();
 
   if (state.activeModal === "SECOND_LAP_CHOICE") {
+    const { tokenId, dice } = state.modalContext as { tokenId?: string; dice?: number };
+    const token = state.tokens.find((candidate) => candidate.id === tokenId);
+    const canContinue = Boolean(token && dice && canContinueSecondLap(state, token, dice));
     return (
       <Sheet title="Take another lap?">
         <p className="text-sm text-muted-foreground">
@@ -49,6 +59,7 @@ export function GameModals({ state, dispatch }: Props) {
         <Button
           variant="secondary"
           className="h-12 w-full"
+          disabled={!canContinue}
           onClick={() => {
             playSfx("modalClose");
             dispatch({ type: "CHOOSE_CONTINUE_LAP" });
@@ -62,12 +73,14 @@ export function GameModals({ state, dispatch }: Props) {
 
   if (state.activeModal === "CUT_REWARD") {
     const color = controllingColor(state);
-    const hasBaseToken = tokensOf(state, color).some(
-      (t) => t.state === "base" && !moveIsBlocked(state, t, 6),
-    );
+    const hasBaseToken = getLegalMoves(state, 6).some((move) => move.kind === "release");
     const canMoveSix = getLegalMoves(state, 6, true).length > 0;
     return (
       <Sheet title="Nice cut! Pick your bonus">
+        <p className="text-sm text-muted-foreground">
+          Your next roll is already earned. Bring out a token or jump one 6 spaces first, or choose
+          Roll again to take that roll now.
+        </p>
         <Button
           className="h-12 w-full"
           disabled={!hasBaseToken}
@@ -130,9 +143,7 @@ export function GameModals({ state, dispatch }: Props) {
   }
 
   if (state.activeModal === "GAME_OVER") {
-    const ranked = [...state.players].sort(
-      (a, b) => (a.finishRank ?? 99) - (b.finishRank ?? 99),
-    );
+    const ranked = [...state.players].sort((a, b) => (a.finishRank ?? 99) - (b.finishRank ?? 99));
     const teamWin = state.winnerTeam
       ? state.players.filter((p) => p.teamId === state.winnerTeam)
       : null;
@@ -143,10 +154,10 @@ export function GameModals({ state, dispatch }: Props) {
     return (
       <Sheet title={teamWin ? "Team victory!" : "We have a winner!"}>
         <div aria-hidden className="pointer-events-none fixed inset-0 z-[60] overflow-hidden">
-          {Array.from({ length: 40 }).map((_, i) => (
+          {Array.from({ length: 12 }).map((_, i) => (
             <span
               key={i}
-              className="absolute top-[-8%] h-2.5 w-1.5 rounded-[1px] animate-[ludo-fall_2.6s_linear_infinite]"
+              className="absolute top-[-8%] h-2.5 w-1.5 rounded-[1px] animate-[ludo-fall_2.6s_linear_forwards]"
               style={{
                 left: `${(i * 97) % 100}%`,
                 background: PALETTE[COLOR_ORDER[i % 4]!].base,
@@ -160,7 +171,7 @@ export function GameModals({ state, dispatch }: Props) {
         <div
           className="relative flex items-center gap-3 rounded-2xl px-4 py-3"
           style={{
-            background: `linear-gradient(150deg, ${p.soft}, white)`,
+            background: `linear-gradient(150deg, ${p.soft}, var(--card))`,
             boxShadow: `0 0 0 0.16rem ${p.base}, 0 16px 30px -18px ${p.dark}`,
           }}
         >
@@ -213,17 +224,12 @@ export function GameModals({ state, dispatch }: Props) {
         >
           New game
         </Button>
-        <Button
-          variant="ghost"
-          className="h-12 w-full"
-          onClick={() => void navigate({ to: "/" })}
-        >
+        <Button variant="ghost" className="h-12 w-full" onClick={() => void navigate({ to: "/" })}>
           Home
         </Button>
       </Sheet>
     );
   }
-
 
   return null;
 }

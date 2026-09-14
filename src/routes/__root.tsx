@@ -10,7 +10,6 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
 import { GameProvider } from "@/lib/ludo/store";
 import { registerOfflineSupport } from "../lib/ludo/register-sw";
 import { Toaster } from "../components/ui/sonner";
@@ -40,9 +39,6 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
-  useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -85,7 +81,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         name: "description",
         content: "A colourful offline Ludo game for 2–4 players sharing one device.",
       },
-      { name: "theme-color", content: "#e8453c" },
+      { name: "theme-color", content: "#171815" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-title", content: "Ludo" },
       { property: "og:type", content: "website" },
@@ -95,12 +91,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         rel: "stylesheet",
         href: appCss,
-      },
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap",
       },
       { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "apple-touch-icon", sizes: "180x180", href: "/icons/apple-touch-icon.png" },
@@ -116,7 +106,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" data-appearance="royal">
       <head>
         <HeadContent />
       </head>
@@ -147,6 +137,12 @@ function OfflineBanner() {
   const [offline, setOffline] = useState(false);
   useEffect(() => {
     void registerOfflineSupport();
+    const updateVisibility = () => {
+      document.documentElement.dataset["pageHidden"] = String(document.hidden);
+    };
+    updateVisibility();
+    document.addEventListener("visibilitychange", updateVisibility);
+    return () => document.removeEventListener("visibilitychange", updateVisibility);
   }, []);
   useEffect(() => {
     const update = () => setOffline(!navigator.onLine);

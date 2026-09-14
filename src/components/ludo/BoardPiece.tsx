@@ -1,0 +1,43 @@
+import { Token, type TokenVisualState } from "./Token";
+import type { positionTokens } from "@/lib/ludo/presentation";
+import type { TokenSkin } from "@/lib/ludo/theme";
+
+interface Props {
+  item: ReturnType<typeof positionTokens>[number];
+  legal: boolean;
+  moving: boolean;
+  visual: TokenVisualState;
+  label: string;
+  skin: TokenSkin;
+  onSelect: (id: string) => void;
+}
+
+export function BoardPiece({ item, legal, moving, visual, label, skin, onSelect }: Props) {
+  const { token, cell, offset } = item;
+  return (
+    <div
+      className="royal-piece-position"
+      data-token-id={token.id}
+      data-interactive={legal}
+      data-moving={moving}
+      style={{ transform: `translate(${cell.col * 100}%, ${cell.row * 100}%)` }}
+    >
+      <button
+        type="button"
+        className="royal-piece-hit"
+        disabled={!legal}
+        data-legal={legal}
+        style={{
+          left: `${offset.x * 100}%`,
+          top: `${offset.y * 100}%`,
+          width: `${offset.scale * 100}%`,
+          height: `${offset.scale * 100}%`,
+        }}
+        onClick={() => onSelect(token.id)}
+        aria-label={label}
+      >
+        <Token color={token.color} visual={visual} skin={skin} className="h-full w-full" />
+      </button>
+    </div>
+  );
+}

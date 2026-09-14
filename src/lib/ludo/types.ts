@@ -44,12 +44,7 @@ export interface Turn {
   owedExtraRoll: boolean;
 }
 
-export type ModalKind =
-  | "NONE"
-  | "SECOND_LAP_CHOICE"
-  | "CUT_REWARD"
-  | "EXIT_CONFIRM"
-  | "GAME_OVER";
+export type ModalKind = "NONE" | "SECOND_LAP_CHOICE" | "CUT_REWARD" | "EXIT_CONFIRM" | "GAME_OVER";
 
 export type Phase = "idle" | "rolling" | "select" | "moving" | "modal" | "over";
 
@@ -68,8 +63,10 @@ export interface Settings {
   soundOn: boolean;
   hapticsOn: boolean;
   musicOn?: boolean;
-  /** Show in-game toast notices (roll/skip messages). Off by default. */
+  /** Synchronized compatibility alias for showMoveSuggestions. */
   notificationsOn?: boolean;
+  /** All optional move guidance; fall back to the legacy alias, then false. */
+  showMoveSuggestions?: boolean;
 }
 
 /** Presentation-only record of the last capture, used to animate the walk back. */
@@ -79,7 +76,6 @@ export interface CaptureEvent {
   square: number;
   tokens: { id: string; color: Color }[];
 }
-
 
 export interface GameState {
   schemaVersion: 1;

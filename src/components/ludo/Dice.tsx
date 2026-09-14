@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
+import { APPEARANCE, type DiceSkin } from "@/lib/ludo/theme";
 import { PALETTE } from "@/lib/ludo/palette";
 import type { Color } from "@/lib/ludo/types";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ interface Props {
   color: Color;
   size?: "sm" | "md";
   onRoll?: () => void;
+  skin?: DiceSkin;
 }
 
 export function Dice({
@@ -36,6 +38,7 @@ export function Dice({
   color,
   size = "md",
   onRoll,
+  skin = APPEARANCE.dice,
 }: Props) {
   const [face, setFace] = useState(value ?? 1);
   const p = PALETTE[color];
@@ -46,7 +49,10 @@ export function Dice({
       if (value) setFace(value);
       return;
     }
-    const id = window.setInterval(() => setFace(1 + Math.floor(Math.random() * 6)), 70);
+    if (document.hidden || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => {
+      if (!document.hidden) setFace(1 + Math.floor(Math.random() * 6));
+    }, 70);
     return () => window.clearInterval(id);
   }, [rolling, value]);
 
@@ -65,34 +71,29 @@ export function Dice({
             : "Dice — not your turn"
       }
       className={cn(
-        "relative shrink-0 rounded-2xl bg-white transition-transform duration-150",
+        skin.className,
+        "relative shrink-0 rounded-2xl transition-transform duration-150",
         size === "md" ? "h-16 w-16" : "h-11 w-11 rounded-xl",
-        active ? "cursor-pointer hover:-translate-y-0.5 active:translate-y-0.5 active:scale-95" : "cursor-default",
-        !lit && "opacity-45 saturate-50",
-        rolling && "animate-[ludo-tumble_0.55s_cubic-bezier(0.34,1.3,0.64,1)_infinite]",
-        !rolling && active && waiting && "animate-[ludo-nudge_1.4s_ease-in-out_infinite]",
+        active
+          ? "cursor-pointer hover:-translate-y-0.5 active:translate-y-0.5 active:scale-95"
+          : "cursor-default",
       )}
-      style={{
-        boxShadow: lit
-          ? `inset 0 -0.35rem 0 -0.1rem ${p.soft}, 0 0 0 0.22rem ${p.base}, 0 10px 20px -8px ${p.dark}`
-          : `inset 0 -0.3rem 0 -0.1rem rgba(0,0,0,0.06), 0 0 0 0.14rem rgba(0,0,0,0.12)`,
-      }}
+      data-lit={lit}
+      data-rolling={rolling}
+      data-waiting={!rolling && active && waiting}
+      style={{ "--dice-accent": p.base } as CSSProperties}
     >
       <span className="absolute inset-[15%] grid grid-cols-3 grid-rows-3 gap-[8%]">
         {Array.from({ length: 9 }).map((_, i) => (
           <span
             key={i}
             className={cn(
-              "m-auto h-full w-full rounded-full transition-opacity",
-              (PIPS[face] ?? []).includes(i) ? "" : "opacity-0",
+              "royal-dice-pip m-auto h-full w-full rounded-full transition-opacity",
+              (PIPS[rolling ? face : (value ?? face)] ?? []).includes(i) ? "" : "opacity-0",
             )}
-            style={{
-              background: `radial-gradient(circle at 32% 28%, ${p.light}, ${p.dark})`,
-            }}
           />
         ))}
       </span>
-
     </button>
   );
 }

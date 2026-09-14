@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { Play, BookOpen, Settings2, RotateCcw } from "lucide-react";
 
 import { InstallButton } from "@/components/ludo/InstallPrompt";
+import { OfflineStatus } from "@/components/ludo/OfflineStatus";
+import { RoyalMotif } from "@/components/ludo/BoardArtwork";
 import { hasSave } from "@/lib/ludo/persistence";
 import { unlockAudio, playSfx } from "@/lib/ludo/audio";
 
@@ -65,20 +67,17 @@ function HomeMenu() {
       />
 
       <header className="relative text-center">
+        <p className="royal-eyebrow mb-5">A royal Indian pastime</p>
         <img
           src="/logo.png"
           alt="atiUjjwal Ludo Game"
-          className="mx-auto mb-6 h-28 w-28 animate-[ludo-float-logo_5s_ease-in-out_infinite] rounded-[1.6rem] shadow-[var(--elev-3)]"
+          className="mx-auto mb-6 h-28 w-28 rounded-[1.6rem] shadow-[var(--elev-3)]"
         />
-        <h1
-          className="font-display text-6xl tracking-tight"
-          style={{
-            color: "var(--ink)",
-            textShadow: "0 3px 0 rgba(255,255,255,0.9), 0 6px 14px rgba(60,40,15,0.25)",
-          }}
-        >
-          Ludo
-        </h1>
+        <h1 className="royal-menu-title font-display text-6xl tracking-tight">Ludo</h1>
+        <div className="mx-auto mt-2 h-10 w-10 text-primary" aria-hidden>
+          <RoyalMotif />
+        </div>
+        <div className="royal-divider" aria-hidden />
         <p className="mt-2 font-semibold text-muted-foreground">
           Pass-and-play on one device. No accounts, works offline.
         </p>
@@ -96,8 +95,7 @@ function HomeMenu() {
           <span
             className="relative flex h-20 w-full items-center justify-center gap-3 overflow-hidden rounded-3xl text-2xl font-black text-white transition-transform active:translate-y-1"
             style={{
-              background:
-                "linear-gradient(160deg, var(--ludo-red-light), var(--ludo-red) 55%, var(--ludo-red-dark))",
+              background: "linear-gradient(160deg, #a62d4b, #671729)",
               boxShadow: "0 8px 0 0 var(--ludo-red-dark), 0 20px 34px -16px var(--ludo-red-dark)",
             }}
           >
@@ -105,14 +103,14 @@ function HomeMenu() {
             Play
             <span
               aria-hidden
-              className="absolute inset-y-0 left-0 w-14 -skew-x-12 bg-white/25 animate-[ludo-sheen_3.6s_ease-in-out_infinite]"
+              className="absolute inset-y-0 left-0 w-14 -skew-x-12 bg-card/25 hidden"
             />
           </span>
         </Link>
 
         {resumable && (
           <Link to="/game" onClick={() => unlockAudio()} className="block">
-            <span className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-[var(--ludo-green)] bg-white text-base font-bold text-[var(--ludo-green-dark)] shadow-[var(--elev-1)] transition-transform active:translate-y-0.5">
+            <span className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-[var(--ludo-green)] bg-card text-base font-bold text-[var(--ludo-green-light)] shadow-[var(--elev-1)] transition-transform active:translate-y-0.5">
               <RotateCcw className="h-5 w-5" />
               Continue your game
             </span>
@@ -121,13 +119,13 @@ function HomeMenu() {
 
         <div className="grid grid-cols-2 gap-3">
           <Link to="/rules" className="block">
-            <span className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-black/10 bg-white text-sm font-bold shadow-[var(--elev-1)] transition-transform active:translate-y-0.5">
+            <span className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-border bg-card text-sm font-bold shadow-[var(--elev-1)] transition-transform active:translate-y-0.5">
               <BookOpen className="h-5 w-5" />
               How to play
             </span>
           </Link>
           <Link to="/settings" className="block">
-            <span className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-black/10 bg-white text-sm font-bold shadow-[var(--elev-1)] transition-transform active:translate-y-0.5">
+            <span className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl border-2 border-border bg-card text-sm font-bold shadow-[var(--elev-1)] transition-transform active:translate-y-0.5">
               <Settings2 className="h-5 w-5" />
               Settings
             </span>
@@ -135,6 +133,7 @@ function HomeMenu() {
         </div>
 
         <InstallButton />
+        <OfflineStatus />
       </nav>
     </main>
   );

@@ -4,18 +4,19 @@ import {
   useEffect,
   useMemo,
   useReducer,
-  useRef,
+  useState,
   type ReactNode,
 } from "react";
 
 import { junctionOf } from "./board";
 import {
   advanceTurn,
+  canContinueSecondLap,
+  canAct,
   controllingColor,
   createGame,
   earnsExtraRoll,
   getLegalMoves,
-  moveIsBlocked,
   playerById,
   refreshTokenState,
   resolveCaptures,
@@ -25,6 +26,7 @@ import {
   updateStandings,
 } from "./engine";
 import { clearSave, loadGame, saveGame } from "./persistence";
+import { guidanceEnabled, normalizeGuidance } from "./guidance";
 import { configureAudio, playSfx, setMusicEnabled, unlockAudio, vibrate } from "./audio";
 import type { Color, GameState, HouseRules, Mode, Token } from "./types";
 
@@ -36,8 +38,9 @@ export type Action =
       houseRules: HouseRules;
       nicknames: Partial<Record<Color, string>>;
       colors?: Color[];
+      showMoveSuggestions?: boolean;
     }
-  | { type: "ROLL" }
+  | { type: "ROLL"; value?: number }
   | { type: "SELECT_TOKEN"; tokenId: string }
   | { type: "CHOOSE_ENTER_HOME" }
   | { type: "CHOOSE_CONTINUE_LAP" }
@@ -47,7 +50,10 @@ export type Action =
   | { type: "HOP" }
   | { type: "FINISH_MOVE" }
   | { type: "SET_MODAL"; modal: GameState["activeModal"] }
-  | { type: "TOGGLE_SETTING"; key: "soundOn" | "hapticsOn" | "musicOn" | "notificationsOn" }
+  | {
+      type: "TOGGLE_SETTING";
+      key: "soundOn" | "hapticsOn" | "musicOn" | "notificationsOn" | "showMoveSuggestions";
+    }
   | { type: "REMATCH" }
   | { type: "RESET" };
 
@@ -64,7 +70,8 @@ function tokenById(state: Draft, id: string): Token {
 
 function endOrContinueTurn(state: Draft) {
   if (state.phase === "over") return;
-  if (state.turn.owedExtraRoll) {
+  const currentPlayer = playerById(state, state.turn.currentPlayerId);
+  if (state.turn.owedExtraRoll && canAct(state, currentPlayer)) {
     state.turn.owedExtraRoll = false;
     state.turn.diceValue = null;
     state.legalMoves = [];
@@ -99,6 +106,7 @@ function startMoveOrAsk(state: Draft, tokenId: string, dice: number, isReward: b
     state.phase = "modal";
     state.activeModal = "SECOND_LAP_CHOICE";
     state.modalContext = { tokenId, dice, isReward };
+    state.legalMoves = [];
     return;
   }
   beginMove(state, tokenId, dice, isReward);
@@ -120,6 +128,13 @@ function evaluateRoll(state: Draft, dice: number) {
   state.legalMoves = moves;
 
   if (moves.length === 0) {
+    if (dice === 6 && state.turn.consecutiveSixes < 3) {
+      note(state, "No legal move for a 6 — roll again.");
+      state.turn.diceValue = null;
+      state.legalMoves = [];
+      state.phase = "idle";
+      return;
+    }
     note(state, `No legal move for a ${dice} — turn skipped.`);
     state.turn.owedExtraRoll = false;
     advanceTurn(state);
@@ -134,7 +149,7 @@ function evaluateRoll(state: Draft, dice: number) {
 
 function finishMove(state: Draft) {
   const pending = state.pending;
-  if (!pending) return;
+  if (!pending || pending.remaining > 0) return;
   const token = tokenById(state, pending.tokenId);
   refreshTokenState(token);
 
@@ -146,12 +161,19 @@ function finishMove(state: Draft) {
   const owed = earnsExtraRoll({
     dice,
     reachedHome,
+    captured: captured.length > 0,
     consecutiveSixes: state.turn.consecutiveSixes,
     isReward: pending.isReward,
     rewardOwed: state.turn.owedExtraRoll,
     threeSixesVariant: hr.threeSixesVariant,
   });
   if (reachedHome) note(state, "Piece home — roll again!");
+  else if (captured.length > 0) note(state, "Opponent cut — roll again!");
+
+  // Reset an exhausted third-six streak before any reward dialog/save.
+  if (state.turn.consecutiveSixes >= 3 && (captured.length > 0 || reachedHome)) {
+    state.turn.consecutiveSixes = 0;
+  }
 
   state.turn.owedExtraRoll = owed;
 
@@ -176,10 +198,31 @@ function finishMove(state: Draft) {
   endOrContinueTurn(state);
 }
 
-function reducer(state: GameState, action: Action): GameState {
-  if (action.type === "HYDRATE") return action.state;
+export function gameReducer(state: GameState, action: Action): GameState {
+  if (action.type === "HYDRATE") {
+    const hydrated = structuredClone(action.state);
+    hydrated.settings = normalizeGuidance(hydrated.settings);
+    if (hydrated.activeModal === "CUT_REWARD" || hydrated.rewardMove) {
+      // Older saves may have opened this dialog without recording a capture roll.
+      hydrated.turn.owedExtraRoll = true;
+      if (hydrated.turn.consecutiveSixes >= 3) hydrated.turn.consecutiveSixes = 0;
+    }
+    if (hydrated.phase === "select") {
+      const dice = hydrated.rewardMove ? 6 : (hydrated.turn.diceValue ?? 0);
+      hydrated.legalMoves = getLegalMoves(hydrated, dice, hydrated.rewardMove);
+      if (hydrated.legalMoves.length === 0) advanceTurn(hydrated);
+    } else {
+      hydrated.legalMoves = [];
+    }
+    hydrated.turn.actingForTeammate =
+      controllingColor(hydrated) !== playerById(hydrated, hydrated.turn.currentPlayerId).color;
+    return hydrated;
+  }
   if (action.type === "START") {
-    return createGame(action.mode, action.houseRules, action.nicknames, action.colors);
+    const fresh = createGame(action.mode, action.houseRules, action.nicknames, action.colors);
+    fresh.settings.showMoveSuggestions = action.showMoveSuggestions ?? false;
+    fresh.settings = normalizeGuidance(fresh.settings);
+    return fresh;
   }
 
   if (action.type === "REMATCH") {
@@ -192,7 +235,7 @@ function reducer(state: GameState, action: Action): GameState {
       nicknames,
       state.gameConfig.activeColors,
     );
-    fresh.settings = state.settings;
+    fresh.settings = normalizeGuidance(state.settings);
     return fresh;
   }
 
@@ -201,70 +244,81 @@ function reducer(state: GameState, action: Action): GameState {
   switch (action.type) {
     case "ROLL": {
       if (draft.phase !== "idle" || draft.activeModal !== "NONE") return state;
-      evaluateRoll(draft, rollDie());
+      const dice = action.value ?? rollDie();
+      if (!Number.isInteger(dice) || dice < 1 || dice > 6) return state;
+      evaluateRoll(draft, dice);
       break;
     }
     case "SELECT_TOKEN": {
       if (draft.phase !== "select") return state;
-      const legal = draft.legalMoves.some((m) => m.tokenId === action.tokenId);
-      if (!legal) return state;
       const dice = draft.rewardMove ? 6 : (draft.turn.diceValue ?? 0);
+      const currentMoves = getLegalMoves(draft, dice, draft.rewardMove);
+      const legal = currentMoves.some((m) => m.tokenId === action.tokenId);
+      if (!legal) return state;
       startMoveOrAsk(draft, action.tokenId, dice, draft.rewardMove);
       break;
     }
     case "CHOOSE_ENTER_HOME": {
+      if (draft.activeModal !== "SECOND_LAP_CHOICE") return state;
       const { tokenId, dice, isReward } = draft.modalContext as {
         tokenId: string;
         dice: number;
         isReward: boolean;
       };
+      const token = draft.tokens.find((candidate) => candidate.id === tokenId);
+      const legal =
+        token && getLegalMoves(draft, dice, isReward).some((m) => m.tokenId === tokenId);
+      if (!token || !legal || !triggersSecondLap(draft, token, dice)) return state;
       draft.activeModal = "NONE";
       draft.modalContext = {};
       beginMove(draft, tokenId, dice, isReward);
       break;
     }
     case "CHOOSE_CONTINUE_LAP": {
+      if (draft.activeModal !== "SECOND_LAP_CHOICE") return state;
       const { tokenId, dice, isReward } = draft.modalContext as {
         tokenId: string;
         dice: number;
         isReward: boolean;
       };
-      const token = tokenById(draft, tokenId);
+      const token = draft.tokens.find((candidate) => candidate.id === tokenId);
+      if (!token || !canContinueSecondLap(draft, token, dice)) return state;
       token.secondLapUsed = true;
-      token.lap = 1;
+      token.lap += 1;
       draft.activeModal = "NONE";
       draft.modalContext = {};
       beginMove(draft, tokenId, dice, isReward);
       break;
     }
     case "CUT_RELEASE": {
+      if (draft.activeModal !== "CUT_REWARD") return state;
       const color = controllingColor(draft);
-      const baseToken = tokensOf(draft, color).find(
-        (t) => t.state === "base" && !moveIsBlocked(draft, t, 6),
+      const releaseIds = new Set(
+        getLegalMoves(draft, 6)
+          .filter((move) => move.kind === "release")
+          .map((move) => move.tokenId),
       );
+      const baseToken = tokensOf(draft, color).find((token) => releaseIds.has(token.id));
+      if (!baseToken) return state;
       draft.activeModal = "NONE";
       draft.modalContext = {};
-      if (baseToken) {
-        baseToken.state = "common";
-        baseToken.steps = 0;
-        baseToken.lap = 0;
-        baseToken.secondLapUsed = false;
-        resolveCaptures(draft, baseToken);
-      }
+      baseToken.state = "common";
+      baseToken.steps = 0;
+      baseToken.lap = 0;
+      baseToken.secondLapUsed = false;
+      resolveCaptures(draft, baseToken);
       draft.phase = "idle";
       endOrContinueTurn(draft);
       break;
     }
     case "CUT_MOVE6": {
+      if (draft.activeModal !== "CUT_REWARD") return state;
+      const moves = getLegalMoves(draft, 6, true);
+      if (moves.length === 0) return state;
       draft.activeModal = "NONE";
       draft.modalContext = {};
       draft.rewardMove = true;
-      const moves = getLegalMoves(draft, 6, true);
-      if (moves.length === 0) {
-        draft.rewardMove = false;
-        draft.phase = "idle";
-        endOrContinueTurn(draft);
-      } else if (moves.length === 1) {
+      if (moves.length === 1) {
         startMoveOrAsk(draft, moves[0]!.tokenId, 6, true);
       } else {
         draft.legalMoves = moves;
@@ -274,6 +328,7 @@ function reducer(state: GameState, action: Action): GameState {
       break;
     }
     case "CUT_EXTRA_ROLL": {
+      if (draft.activeModal !== "CUT_REWARD") return state;
       draft.activeModal = "NONE";
       draft.modalContext = {};
       draft.turn.owedExtraRoll = true;
@@ -299,7 +354,12 @@ function reducer(state: GameState, action: Action): GameState {
       break;
     }
     case "TOGGLE_SETTING": {
-      draft.settings[action.key] = !draft.settings[action.key];
+      if (action.key === "notificationsOn" || action.key === "showMoveSuggestions") {
+        draft.settings.showMoveSuggestions = !guidanceEnabled(draft.settings);
+        draft.settings = normalizeGuidance(draft.settings);
+      } else {
+        draft.settings[action.key] = !draft.settings[action.key];
+      }
       break;
     }
     case "RESET": {
@@ -320,25 +380,28 @@ interface Ctx {
 
 const GameContext = createContext<Ctx | null>(null);
 
-const EMPTY = createGame("4P", { ...{ exitOnOne: false, secondLap: false, cutReward: false, threeSixesVariant: false } }, {});
+const EMPTY = createGame(
+  "4P",
+  { ...{ exitOnOne: false, secondLap: false, cutReward: false, threeSixesVariant: false } },
+  {},
+);
 
 export function GameProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, EMPTY);
-  const readyRef = useRef(false);
-  const [, force] = useReducer((n: number) => n + 1, 0);
+  const [state, dispatch] = useReducer(gameReducer, EMPTY);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const saved = loadGame();
     if (saved) dispatch({ type: "HYDRATE", state: saved });
-    readyRef.current = true;
-    force();
+    setReady(true);
   }, []);
 
-  // Persist after every transition.
+  // Persist only stable turns. Saving individual animation hops can restore a
+  // partially moved token while losing the remainder of its pending move.
   useEffect(() => {
-    if (!readyRef.current) return;
+    if (!ready || state.phase === "moving" || state.phase === "rolling") return;
     saveGame(state);
-  }, [state]);
+  }, [ready, state]);
 
   useEffect(() => {
     configureAudio(state.settings.soundOn, state.settings.hapticsOn);
@@ -357,20 +420,20 @@ export function GameProvider({ children }: { children: ReactNode }) {
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (pending.remaining > 0) {
-      const id = window.setTimeout(() => {
-        playSfx("tokenHop");
-        dispatch({ type: "HOP" });
-      }, reduced ? 30 : 130);
+      const id = window.setTimeout(
+        () => {
+          playSfx("tokenHop");
+          dispatch({ type: "HOP" });
+        },
+        reduced ? 30 : 130,
+      );
       return () => window.clearTimeout(id);
     }
     const id = window.setTimeout(() => dispatch({ type: "FINISH_MOVE" }), reduced ? 30 : 200);
     return () => window.clearTimeout(id);
   }, [state.pending]);
 
-  const value = useMemo(
-    () => ({ state, dispatch, ready: readyRef.current }),
-    [state, readyRef.current],
-  );
+  const value = useMemo(() => ({ state, dispatch, ready }), [ready, state]);
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 }

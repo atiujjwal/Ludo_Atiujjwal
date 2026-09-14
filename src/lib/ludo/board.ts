@@ -139,4 +139,3 @@ export const OPPOSITE_COLOR: Record<Color, Color> = {
   green: "blue",
   blue: "green",
 };
-

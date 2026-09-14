@@ -1,5 +1,6 @@
 import {
   COLOR_ORDER,
+  OPPOSITE_COLOR,
   SAFE_SQUARES,
   absoluteIndex,
   isOnCommon,
@@ -55,10 +56,13 @@ export function createGame(
 ): GameState {
   const required = MODE_COLORS[mode].length;
   const picked = (chosenColors ?? []).filter((c, i, a) => a.indexOf(c) === i);
-  const activeColors =
-    mode === "4P" || mode === "2V2" || picked.length !== required ? MODE_COLORS[mode] : picked;
+  const validChoice =
+    picked.length === required &&
+    (mode !== "2P" || (picked[0] !== undefined && OPPOSITE_COLOR[picked[0]] === picked[1]));
+  const activeColors = mode === "4P" || mode === "2V2" || !validChoice ? MODE_COLORS[mode] : picked;
   const isTeam = mode === "2V2";
-  const seatOrder = COLOR_ORDER.filter((c) => activeColors.includes(c));
+  // In selectable modes, claim order is turn order: the first pick starts.
+  const seatOrder = [...activeColors];
 
   const players: Player[] = seatOrder.map((color, i) => ({
     id: `p-${color}`,
@@ -108,7 +112,13 @@ export function createGame(
     messageId: 0,
     rewardMove: false,
     winnerTeam: null,
-    settings: { soundOn: true, hapticsOn: true, musicOn: false, notificationsOn: false },
+    settings: {
+      soundOn: true,
+      hapticsOn: true,
+      musicOn: false,
+      notificationsOn: false,
+      showMoveSuggestions: false,
+    },
     createdAt: Date.now(),
     lastSavedAt: Date.now(),
   };
@@ -145,14 +155,17 @@ export function areTeammates(state: GameState, a: Color, b: Color): boolean {
 
 /**
  * Squares of the shared loop holding two or more tokens of the same colour.
- * Such a square is a blockade ("wall"): impassable and uncapturable for anyone
- * who is not the owner (or the owner's 2v2 teammate).
+ * On unsafe squares this forms a blockade ("wall"): impassable and
+ * uncapturable for anyone who is not the owner (or the owner's 2v2 teammate).
+ * Safe squares allow opposing pieces to coexist, so stacks there never form
+ * walls.
  */
 export function blockades(state: GameState): Map<number, Color> {
   const counts = new Map<number, Map<Color, number>>();
   for (const token of state.tokens) {
     if (!isOnCommon(token)) continue;
     const index = absoluteIndex(token.color, token.steps);
+    if (SAFE_SQUARES.has(index)) continue;
     const byColor = counts.get(index) ?? new Map<Color, number>();
     byColor.set(token.color, (byColor.get(token.color) ?? 0) + 1);
     counts.set(index, byColor);
@@ -178,6 +191,7 @@ export function wallIsFriendly(state: GameState, owner: Color, color: Color): bo
 export function pathSquares(token: Token, dice: number): number[] {
   const junction = junctionOf(token);
   const squares: number[] = [];
+  if (!Number.isInteger(dice) || dice < 1 || dice > 6) return squares;
   if (token.state === "base") return [absoluteIndex(token.color, 0)];
   for (let s = token.steps + 1; s <= token.steps + dice; s++) {
     if (s >= junction) break;
@@ -198,6 +212,7 @@ export function moveIsBlocked(state: GameState, token: Token, dice: number): boo
 }
 
 export function getLegalMoves(state: GameState, dice: number, movesOnly = false): LegalMove[] {
+  if (!Number.isInteger(dice) || dice < 1 || dice > 6) return [];
   const color = controllingColor(state);
   const hr = state.gameConfig.houseRules;
   const moves: LegalMove[] = [];
@@ -226,6 +241,13 @@ export function triggersSecondLap(state: GameState, token: Token, dice: number):
   if (token.state === "base" || token.state === "finished") return false;
   const junction = junctionOf(token);
   return token.steps <= junction - 1 && token.steps + dice >= junction;
+}
+
+/** Whether the optional second-lap route is legal for the complete rolled path. */
+export function canContinueSecondLap(state: GameState, token: Token, dice: number): boolean {
+  if (!triggersSecondLap(state, token, dice)) return false;
+  const continued = { ...token, lap: token.lap + 1, secondLapUsed: true };
+  return continued.steps + dice <= maxStepsOf(continued) && !moveIsBlocked(state, continued, dice);
 }
 
 /** Apply captures caused by `token` landing. Returns captured token ids. */
@@ -262,24 +284,25 @@ export function resolveCaptures(state: GameState, token: Token): string[] {
 
 /**
  * Does the player roll again after the move that just finished?
- * A six earns another roll, and so does getting a piece Home — granted once,
+ * A capture, six, or newly completed piece earns another roll — granted once,
  * from the move that completed, so it can never chain off the same piece.
  */
 export function earnsExtraRoll(opts: {
   dice: number;
   reachedHome: boolean;
+  captured: boolean;
   consecutiveSixes: number;
   isReward: boolean;
   rewardOwed: boolean;
   threeSixesVariant: boolean;
 }): boolean {
-  if (opts.reachedHome) return true;
+  if (opts.captured || opts.reachedHome) return true;
   if (opts.isReward) return opts.rewardOwed;
-  // HR4: the third six normally ends the turn.
+  // evaluateRoll rejects a third six before movement when the variant is off.
+  // A played third six needs a capture or home completion, not just its dice value.
   if (opts.consecutiveSixes >= 3) return false;
   return opts.dice === 6;
 }
-
 
 export function refreshTokenState(token: Token): void {
   if (token.state === "base") return;
@@ -329,7 +352,7 @@ export function updateStandings(state: GameState): void {
 }
 
 /** Can this player still act? In 2v2 a finished player plays their teammate's tokens. */
-function canAct(state: GameState, player: Player): boolean {
+export function canAct(state: GameState, player: Player): boolean {
   if (!player.finished) return true;
   if (state.gameConfig.mode !== "2V2") return false;
   const mate = teammateColor(state, player.color);
@@ -350,7 +373,8 @@ export function advanceTurn(state: GameState): void {
   state.turn.diceValue = null;
   state.turn.consecutiveSixes = 0;
   state.turn.owedExtraRoll = false;
-  state.turn.actingForTeammate = controllingColor(state) !== playerById(state, state.turn.currentPlayerId).color;
+  state.turn.actingForTeammate =
+    controllingColor(state) !== playerById(state, state.turn.currentPlayerId).color;
   state.legalMoves = [];
   state.pending = null;
   state.rewardMove = false;

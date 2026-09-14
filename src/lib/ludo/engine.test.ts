@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { COLOR_CORNER, COLOR_ORDER, OPPOSITE_COLOR, START_OFFSET, junctionOf } from "./board";
+import {
+  COLOR_CORNER,
+  COLOR_ORDER,
+  OPPOSITE_COLOR,
+  SAFE_SQUARES,
+  START_OFFSET,
+  junctionOf,
+} from "./board";
 import {
   DEFAULT_HOUSE_RULES,
   blockades,
@@ -77,14 +84,53 @@ describe("blockades", () => {
     expect(s.tokens.find((t) => t.id === "green-0")!.state).toBe("common");
   });
 
-  it("a wall on a safe square is still impassable", () => {
+  it("never treats a same-color stack on a safe square as a wall", () => {
     const s = game();
     turnOf(s, "red");
     place(s, "red", 0, 6);
     place(s, "green", 0, 8); // 8 is a safe square
     place(s, "green", 1, 8);
-    expect(getLegalMoves(s, 2).some((m) => m.tokenId === "red-0")).toBe(false);
-    expect(getLegalMoves(s, 4).some((m) => m.tokenId === "red-0")).toBe(false);
+    expect(blockades(s).has(8)).toBe(false);
+    expect(getLegalMoves(s, 2).some((m) => m.tokenId === "red-0")).toBe(true);
+    expect(getLegalMoves(s, 4).some((m) => m.tokenId === "red-0")).toBe(true);
+  });
+
+  it("applies safe-stack coexistence to every protected track square", () => {
+    for (const safeSquare of SAFE_SQUARES) {
+      const s = game();
+      place(s, "green", 0, safeSquare);
+      place(s, "green", 1, safeSquare);
+      const moverColor = COLOR_ORDER.find((color) => {
+        const destinationSteps = (safeSquare - START_OFFSET[color] + 52) % 52;
+        return color !== "green" && destinationSteps >= 1 && destinationSteps <= 50;
+      })!;
+      turnOf(s, moverColor);
+      place(s, moverColor, 0, (safeSquare + 51) % 52);
+
+      expect(blockades(s).has(safeSquare)).toBe(false);
+      expect(getLegalMoves(s, 1).some((move) => move.tokenId === `${moverColor}-0`)).toBe(true);
+    }
+  });
+
+  it("keeps every unsafe same-color stack solid to opponents", () => {
+    for (let square = 0; square < 52; square += 1) {
+      if (SAFE_SQUARES.has(square)) continue;
+      const s = game();
+      const ownerColor = COLOR_ORDER.find(
+        (color) => (square - START_OFFSET[color] + 52) % 52 <= 50,
+      )!;
+      place(s, ownerColor, 0, square);
+      place(s, ownerColor, 1, square);
+      const moverColor = COLOR_ORDER.find((color) => {
+        const destinationSteps = (square - START_OFFSET[color] + 52) % 52;
+        return color !== ownerColor && destinationSteps >= 1 && destinationSteps <= 50;
+      })!;
+      turnOf(s, moverColor);
+      place(s, moverColor, 0, (square + 51) % 52);
+
+      expect(blockades(s).get(square)).toBe(ownerColor);
+      expect(getLegalMoves(s, 1).some((move) => move.tokenId === `${moverColor}-0`)).toBe(false);
+    }
   });
 
   it("dissolves when one owner token leaves, restoring normal capture", () => {
@@ -114,12 +160,12 @@ describe("blockades", () => {
     expect(getLegalMoves(s, 4).some((m) => m.tokenId === "green-2")).toBe(true);
   });
 
-  it("blocks releases onto an occupied start square", () => {
+  it("allows releases onto a stacked opponent on the safe start square", () => {
     const s = game();
     turnOf(s, "red");
     place(s, "green", 0, START_OFFSET.red);
     place(s, "green", 1, START_OFFSET.red);
-    expect(getLegalMoves(s, 6).some((m) => m.kind === "release")).toBe(false);
+    expect(getLegalMoves(s, 6).filter((m) => m.kind === "release")).toHaveLength(4);
   });
 
   it("blocks the cut-reward six-jump too", () => {
@@ -208,6 +254,7 @@ describe("seating and extra rolls", () => {
   it("grants another roll when a piece reaches home", () => {
     const base = {
       dice: 3,
+      captured: false,
       consecutiveSixes: 0,
       isReward: false,
       rewardOwed: false,
@@ -218,7 +265,9 @@ describe("seating and extra rolls", () => {
     // Still true when the piece lands home on a reward move or a third six.
     expect(earnsExtraRoll({ ...base, reachedHome: true, isReward: true })).toBe(true);
     expect(earnsExtraRoll({ ...base, dice: 6, consecutiveSixes: 3, reachedHome: true })).toBe(true);
-    expect(earnsExtraRoll({ ...base, dice: 6, consecutiveSixes: 3, reachedHome: false })).toBe(false);
+    expect(earnsExtraRoll({ ...base, dice: 6, consecutiveSixes: 3, reachedHome: false })).toBe(
+      false,
+    );
     expect(earnsExtraRoll({ ...base, dice: 6, reachedHome: false })).toBe(true);
   });
 });

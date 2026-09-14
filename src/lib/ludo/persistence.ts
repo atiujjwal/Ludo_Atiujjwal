@@ -1,11 +1,16 @@
 import type { GameState } from "./types";
+import { normalizeGuidance } from "./guidance";
 
 const KEY = "ludo:save:v1";
 
 export function saveGame(state: GameState): void {
   if (typeof window === "undefined") return;
   try {
-    const payload = { ...state, lastSavedAt: Date.now() };
+    const payload = {
+      ...state,
+      settings: normalizeGuidance(state.settings),
+      lastSavedAt: Date.now(),
+    };
     window.localStorage.setItem(KEY, JSON.stringify(payload));
   } catch {
     /* storage full or blocked — the game keeps running in memory */
@@ -38,6 +43,7 @@ export function loadGame(): GameState | null {
       return null;
     }
     const state = parsed;
+    state.settings = normalizeGuidance(state.settings);
     // Never restore mid-animation or mid-roll.
     if (state.pending) {
       state.pending = null;
