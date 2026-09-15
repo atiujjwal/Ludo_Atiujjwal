@@ -5,7 +5,7 @@ A local pass-and-play Ludo game for two to four players. It runs as a TanStack S
 ## Requirements
 
 - Node.js 20 or newer
-- Bun 1.2 or newer (recommended), or npm
+- Bun 1.4.0 (recommended and pinned for deployment), or npm
 
 ## Development
 
@@ -44,9 +44,11 @@ The deployable application is written to `.output`. Its server entry point is `.
 
 The checked-in `vercel.json` overrides Vercel's Vite `dist` assumption. It runs `bun run build:vercel` and packages the app using Nitro's official `vercel` preset into `.vercel/output`, including Node 22 SSR Functions and CDN assets. No catch-all SPA rewrite is needed; real unknown routes remain 404s.
 
+Installation and build commands explicitly use `bunx bun@1.4.0`, matching `package.json`'s package-manager pin. Vercel's bundled older Bun cannot parse this project's version-2 `bun.lock`. Keep `--frozen-lockfile`; do not delete the lockfile or regenerate dependencies to bypass that error. See [Vercel's Bun version-pinning instructions](https://vercel.com/kb/guide/how-to-pin-a-specific-bun-version-for-vercel-builds). This build-tool pin does not change the Node server runtime.
+
 The deployment build first generates and verifies the existing Node/PWA output, then packages the Vercel server. Browser bundle hashes must match before the optimized media, route snapshots and revisioned worker are copied into the Vercel static output. This keeps complete offline preparation and safe updates intact. The standard `bun run build` / `bun run start` workflow remains unchanged for other Node hosts.
 
-Commit these changes and redeploy. Remove any environment-specific Build Command override that still runs only `bun run build`; use `bun run build:vercel`. The Output Directory is `.vercel/output/static`, not `dist` or source `public`. Keep the project Root Directory at the repository root. Vercel uses `.vercel/output/config.json` to route SSR requests to the generated Function.
+Commit these changes and redeploy. Remove stale environment-specific Install/Build Command overrides so the checked-in commands apply: `bunx bun@1.4.0 install --frozen-lockfile` and `bunx bun@1.4.0 run build:vercel`. The Output Directory is `.vercel/output/static`, not `dist` or source `public`. Keep the project Root Directory at the repository root. Vercel uses `.vercel/output/config.json` to route SSR requests to the generated Function.
 
 ## Progressive Web App
 
