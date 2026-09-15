@@ -151,6 +151,7 @@ export function LudoBoard({
             );
           })}
           <BoardEffects
+            key={state.createdAt}
             layout={layout}
             capture={state.lastCapture ?? null}
             celebrate={celebrate ?? null}

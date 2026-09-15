@@ -1,27 +1,44 @@
 import type { CaptureEvent, Color } from "./types";
+import { CAPTURE_CATS, CAT_DISPLAY_MS, type CatId } from "./cat-effects";
 
-/** Presentation-only lifetimes. The initial saved event is deliberately consumed. */
+export interface CaptureCat {
+  id: number;
+  stage: 0 | 1;
+  role: "cutter" | "victim";
+  cat: CatId;
+}
+/** One replaceable sequence per colour, independent of all gameplay timers. */
 export function createCaptureFeedback(
   initialId: number | undefined,
   effects: {
-    show: (color: Color, id: number) => void;
+    show: (color: Color, entry: CaptureCat) => void;
     hide: (color: Color) => void;
   },
-  waitForImage = false,
 ) {
   let lastId = initialId;
-  const timers = new Map<Color, ReturnType<typeof setTimeout>>();
-  const active = new Map<Color, number>();
+  const active = new Map<
+    Color,
+    { entry: CaptureCat; loaded: boolean; timer: ReturnType<typeof setTimeout> }
+  >();
   function expire(color: Color, delay: number) {
-    clearTimeout(timers.get(color));
-    timers.set(
-      color,
-      setTimeout(() => {
-        timers.delete(color);
+    const item = active.get(color);
+    if (!item) return;
+    clearTimeout(item.timer);
+    item.timer = setTimeout(() => {
+      if (item.entry.stage === 0) start(color, item.entry.id, item.entry.role, 1);
+      else {
         active.delete(color);
         effects.hide(color);
-      }, delay),
-    );
+      }
+    }, delay);
+  }
+  function start(color: Color, id: number, role: CaptureCat["role"], stage: 0 | 1) {
+    const old = active.get(color);
+    if (old) clearTimeout(old.timer);
+    const entry: CaptureCat = { id, stage, role, cat: CAPTURE_CATS[role][stage] };
+    active.set(color, { entry, loaded: false, timer: setTimeout(() => {}, 0) });
+    expire(color, 10000);
+    effects.show(color, entry);
   }
   return {
     update(event?: CaptureEvent | null) {
@@ -31,23 +48,21 @@ export function createCaptureFeedback(
       }
       if (event.id === lastId) return;
       lastId = event.id;
-      for (const color of new Set(event.tokens.map((token) => token.color))) {
-        active.set(color, event.id);
-        effects.show(color, event.id);
-        // Slow image loads must not consume the entire visible lifetime.
-        // Still bound missing-asset overlays and clean up their timers.
-        expire(color, waitForImage ? 10000 : 2500);
-      }
+      for (const color of new Set(event.tokens.map((token) => token.color)))
+        start(color, event.id, "victim", 0);
+      if (event.cutterColor) start(event.cutterColor, event.id, "cutter", 0);
     },
-    loaded(color: Color, id: number) {
-      if (active.get(color) === id) expire(color, 2500);
+    loaded(color: Color, id: number, stage: 0 | 1) {
+      const item = active.get(color);
+      if (!item || item.entry.id !== id || item.entry.stage !== stage || item.loaded) return;
+      item.loaded = true;
+      expire(color, CAT_DISPLAY_MS);
     },
     dispose() {
-      timers.forEach((timer, color) => {
-        clearTimeout(timer);
+      for (const [color, item] of active) {
+        clearTimeout(item.timer);
         effects.hide(color);
-      });
-      timers.clear();
+      }
       active.clear();
     },
   };

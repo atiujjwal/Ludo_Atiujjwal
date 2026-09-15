@@ -73,6 +73,8 @@ export interface Settings {
 /** Presentation-only record of the last capture, used to animate the walk back. */
 export interface CaptureEvent {
   id: number;
+  /** Actual moving token colour; absent in legacy presentation breadcrumbs. */
+  cutterColor?: Color;
   /** Absolute shared-track square where the capture happened. */
   square: number;
   tokens: { id: string; color: Color }[];

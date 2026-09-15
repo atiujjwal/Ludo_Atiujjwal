@@ -285,7 +285,12 @@ export function resolveCaptures(state: GameState, token: Token): string[] {
   }
   // Presentation-only breadcrumb so the UI can walk the beaten pieces home.
   if (victims.length > 0) {
-    state.lastCapture = { id: (state.lastCapture?.id ?? 0) + 1, square: index, tokens: victims };
+    state.lastCapture = {
+      id: (state.lastCapture?.id ?? 0) + 1,
+      square: index,
+      tokens: victims,
+      cutterColor: token.color,
+    };
   }
   return captured;
 }

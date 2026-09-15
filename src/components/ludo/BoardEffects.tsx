@@ -7,10 +7,10 @@ import {
   geometryColor,
   type BoardLayout,
 } from "@/lib/ludo/board";
-import { createCaptureFeedback } from "@/lib/ludo/capture-feedback";
+import { createCaptureFeedback, type CaptureCat } from "@/lib/ludo/capture-feedback";
 import type { CaptureEvent, Color } from "@/lib/ludo/types";
 import { cellStyle } from "@/lib/ludo/board-style";
-import { usePageVisible } from "@/lib/page-visibility";
+import { CatMedia } from "./CatMedia";
 
 /** Brief, CSS-only feedback; never owns a gameplay timer. */
 export function BoardEffects({
@@ -22,47 +22,40 @@ export function BoardEffects({
   celebrate?: { color: Color; id: number } | null;
   layout?: BoardLayout;
 }) {
-  const visible = usePageVisible();
-  const [victims, setVictims] = useState<Partial<Record<Color, number>>>({});
+  const [cats, setCats] = useState<Partial<Record<Color, CaptureCat>>>({});
   const [feedback] = useState(() =>
-    createCaptureFeedback(
-      capture?.id,
-      {
-        show: (color, id) => setVictims((previous) => ({ ...previous, [color]: id })),
-        hide: (color) =>
-          setVictims((previous) => {
-            const next = { ...previous };
-            delete next[color];
-            return next;
-          }),
-      },
-      true,
-    ),
+    createCaptureFeedback(capture?.id, {
+      show: (color, entry) => setCats((previous) => ({ ...previous, [color]: entry })),
+      hide: (color) =>
+        setCats((previous) => {
+          const next = { ...previous };
+          delete next[color];
+          return next;
+        }),
+    }),
   );
   useEffect(() => feedback.update(capture), [capture, feedback]);
   useEffect(() => () => feedback.dispose(), [feedback]);
   return (
     <div className="royal-effects" aria-hidden>
-      {(Object.entries(victims) as [Color, number][]).map(([color, id]) => (
+      {(Object.entries(cats) as [Color, CaptureCat][]).map(([color, entry]) => (
         <div
-          key={`${color}-${id}`}
-          className="royal-crying-yard"
+          key={`${color}-${entry.id}-${entry.stage}`}
+          className="royal-cat-yard"
+          data-color={color}
+          data-role={entry.role}
+          data-stage={entry.stage}
           style={cellStyle(BASE_ORIGIN[geometryColor(color, layout)], 6)}
         >
-          <picture className="royal-crying-teddy">
-            <source media="(prefers-reduced-motion: reduce)" srcSet="/crying_teddy-still.png" />
-            <img
-              src={visible ? "/crying_teddy.gif" : "/crying_teddy-still.png"}
-              alt=""
-              width="512"
-              height="512"
-              onLoad={() => feedback.loaded(color, id)}
-              onError={() => feedback.loaded(color, id)}
-            />
-          </picture>
+          <CatMedia
+            cat={entry.cat}
+            session={`capture-${color}-${entry.id}-${entry.stage}`}
+            className="royal-house-cat"
+            onLoaded={() => feedback.loaded(color, entry.id, entry.stage)}
+          />
         </div>
       ))}
-      {capture && Object.values(victims).includes(capture.id) && (
+      {capture && Object.values(cats).some((entry) => entry?.id === capture.id) && (
         <span
           key={capture.id}
           className="royal-capture"

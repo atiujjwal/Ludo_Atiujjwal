@@ -7,7 +7,7 @@ const isGeneratedAsset = (pathname: string) =>
   /^\/assets\/[^/]+\.(?:js|css|svg)$/.test(pathname) ||
   pathname === "/manifest.webmanifest" ||
   /^\/offline\/(index|setup|game|rules|settings)-[a-f0-9]{16}\.html$/.test(pathname) ||
-  /^\/(logo\.jpeg|favicon\.png|(?:crying|happy)_teddy(?:-still\.png|\.gif)|icons\/(?:icon-192|icon-512|icon-maskable|apple-touch-icon)\.png)$/.test(
+  /^\/(logo\.jpeg|favicon\.png|animation\/(?:bleh-cat|cat-orange-cat|banana-cat-crying|crying-crying-cat|babsb-cat|dancing-cat-ai|happy-cat)(?:-still\.png|\.gif)|icons\/(?:icon-192|icon-512|icon-maskable|apple-touch-icon)\.png)$/.test(
     pathname,
   );
 

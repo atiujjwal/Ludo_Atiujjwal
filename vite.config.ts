@@ -4,6 +4,8 @@ import react from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
 import { existsSync, readdirSync } from "node:fs";
+import sharp from "sharp";
+import { catAssets } from "./scripts/cat-assets.mjs";
 
 export default defineConfig({
   define: {
@@ -26,6 +28,32 @@ export default defineConfig({
     ignoreOutdatedRequests: true,
   },
   plugins: [
+    {
+      name: "cat-static-frames",
+      configureServer(server) {
+        const frames = new Map<string, Promise<Buffer>>();
+        server.middlewares.use(async (req, res, next) => {
+          const name = new URL(req.url ?? "/", "http://localhost").pathname.match(
+            /^\/animation\/([^/]+)-still\.png$/,
+          )?.[1];
+          if (!name || !catAssets.includes(name)) return next();
+          try {
+            let frame = frames.get(name);
+            if (!frame) {
+              frame = sharp(`public/animation/${name}.gif`)
+                .resize({ width: 160, withoutEnlargement: true })
+                .png()
+                .toBuffer();
+              frames.set(name, frame);
+            }
+            res.setHeader("Content-Type", "image/png");
+            res.end(await frame);
+          } catch (error) {
+            next(error);
+          }
+        });
+      },
+    },
     tailwindcss(),
     tanstackStart({
       // Keep the existing SSR error wrapper as the server entry point.

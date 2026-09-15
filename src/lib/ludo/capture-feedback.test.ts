@@ -1,28 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { createCaptureFeedback } from "./capture-feedback";
+import { CAT_IDS } from "./cat-effects";
 import { COLOR_ORDER } from "./board";
-import type { Color } from "./types";
 
 afterEach(() => vi.useRealTimers());
-describe("independent capture overlays", () => {
-  it("serves the root teddy assets and keeps its loaded state visible", () => {
-    expect(existsSync(new URL("../../../public/crying_teddy.gif", import.meta.url))).toBe(true);
-    expect(existsSync(new URL("../../../public/crying_teddy-still.png", import.meta.url))).toBe(
-      true,
+describe("nonblocking capture cat sequences", () => {
+  it("has every source GIF and no obsolete teddy source", () => {
+    for (const cat of CAT_IDS)
+      expect(existsSync(new URL(`../../../public/animation/${cat}.gif`, import.meta.url))).toBe(
+        true,
+      );
+    expect(existsSync(new URL("../../../public/crying_teddy.gif", import.meta.url))).toBe(false);
+    expect(existsSync(new URL("../../../public/animation/happy_teddy.gif", import.meta.url))).toBe(
+      false,
     );
-    const component = readFileSync(
-      new URL("../../components/ludo/BoardEffects.tsx", import.meta.url),
-      "utf8",
-    );
-    expect(component).toContain('visible ? "/crying_teddy.gif" : "/crying_teddy-still.png"');
-    expect(component).toContain('srcSet="/crying_teddy-still.png"');
-    expect(component).not.toContain("CryingAudio");
-    const css = readFileSync(new URL("../../royal.css", import.meta.url), "utf8");
-    expect(css).toMatch(/\.royal-crying-teddy\s*\{[^}]*position: absolute/);
-    expect(css).toMatch(/@keyframes royal-crying\s*\{[\s\S]*?100%\s*\{\s*opacity: 1/);
   });
-  it.each(COLOR_ORDER)("consumes saved events and expires %s once", (color) => {
+  it.each(COLOR_ORDER)("shows both %s victim stages for three loaded seconds each", (color) => {
     vi.useFakeTimers();
     const effects = { show: vi.fn(), hide: vi.fn() };
     const feedback = createCaptureFeedback(4, effects);
@@ -31,46 +25,85 @@ describe("independent capture overlays", () => {
     expect(effects.show).not.toHaveBeenCalled();
     feedback.update({ ...event, id: 5 });
     feedback.update({ ...event, id: 5 });
-    expect(effects.show).toHaveBeenCalledExactlyOnceWith(color, 5);
-    vi.advanceTimersByTime(2499);
-    expect(effects.hide).not.toHaveBeenCalled();
+    expect(effects.show).toHaveBeenCalledExactlyOnceWith(color, {
+      id: 5,
+      stage: 0,
+      role: "victim",
+      cat: "banana-cat-crying",
+    });
+    vi.advanceTimersByTime(3000); // loading doesn't consume the display interval
+    feedback.loaded(color, 5, 0);
+    vi.advanceTimersByTime(2999);
+    expect(effects.show).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(1);
+    expect(effects.show).toHaveBeenLastCalledWith(color, {
+      id: 5,
+      stage: 1,
+      role: "victim",
+      cat: "crying-crying-cat",
+    });
+    feedback.loaded(color, 5, 0); // stale first-stage callback
+    feedback.loaded(color, 5, 1);
+    vi.advanceTimersByTime(1000);
+    feedback.loaded(color, 5, 1); // duplicate load can't extend the interval
+    vi.advanceTimersByTime(2000);
     expect(effects.hide).toHaveBeenCalledExactlyOnceWith(color);
     feedback.dispose();
     expect(vi.getTimerCount()).toBe(0);
   });
-  it("restarts victim lifetimes, supports simultaneous victims and cleans obsolete timers", () => {
+  it("shows the actual cutter and simultaneous victims; newer roles replace older ones", () => {
     vi.useFakeTimers();
     const effects = { show: vi.fn(), hide: vi.fn() };
     const feedback = createCaptureFeedback(undefined, effects);
-    const tokens = ["red", "blue"].map((color) => ({ id: color, color: color as Color }));
-    feedback.update({ id: 1, square: 6, tokens });
-    vi.advanceTimersByTime(1000);
-    feedback.update({ id: 2, square: 6, tokens: [tokens[0]!] });
-    vi.advanceTimersByTime(1500);
-    expect(effects.hide.mock.calls).toEqual([["blue"]]);
+    feedback.update({
+      id: 1,
+      square: 6,
+      cutterColor: "blue",
+      tokens: [
+        { id: "red-0", color: "red" },
+        { id: "green-0", color: "green" },
+      ],
+    });
+    expect(effects.show).toHaveBeenCalledWith("blue", {
+      id: 1,
+      stage: 0,
+      role: "cutter",
+      cat: "bleh-cat",
+    });
+    feedback.loaded("blue", 1, 0);
+    vi.advanceTimersByTime(3000);
+    expect(effects.show).toHaveBeenLastCalledWith("blue", {
+      id: 1,
+      stage: 1,
+      role: "cutter",
+      cat: "cat-orange-cat",
+    });
+    feedback.update({
+      id: 2,
+      square: 6,
+      cutterColor: "red",
+      tokens: [{ id: "blue-0", color: "blue" }],
+    });
+    feedback.loaded("blue", 1, 1);
+    feedback.loaded("blue", 2, 0);
+    vi.advanceTimersByTime(3000);
+    expect(effects.show).toHaveBeenLastCalledWith("blue", {
+      id: 2,
+      stage: 1,
+      role: "victim",
+      cat: "crying-crying-cat",
+    });
     feedback.dispose();
-    vi.advanceTimersByTime(10000);
-    expect(effects.hide.mock.calls).toEqual([["blue"], ["red"]]);
+    vi.advanceTimersByTime(20000);
     expect(vi.getTimerCount()).toBe(0);
   });
-  it("gives a slowly loaded teddy a full lifetime and ignores obsolete image loads", () => {
+  it("bounds missing-image stages and supports legacy events without a cutter", () => {
     vi.useFakeTimers();
     const effects = { show: vi.fn(), hide: vi.fn() };
-    const feedback = createCaptureFeedback(undefined, effects, true);
-    const tokens = [{ id: "blue-0", color: "blue" as const }];
-    feedback.update({ id: 1, square: 6, tokens });
-    vi.advanceTimersByTime(3000);
-    expect(effects.hide).not.toHaveBeenCalled();
-    feedback.update({ id: 2, square: 6, tokens });
-    feedback.loaded("blue", 1);
-    vi.advanceTimersByTime(3000);
-    expect(effects.hide).not.toHaveBeenCalled();
-    feedback.loaded("blue", 2);
-    vi.advanceTimersByTime(2499);
-    expect(effects.hide).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
-    expect(effects.hide).toHaveBeenCalledExactlyOnceWith("blue");
-    feedback.dispose();
+    const feedback = createCaptureFeedback(undefined, effects);
+    feedback.update({ id: 1, square: 6, tokens: [{ id: "red-0", color: "red" }] });
+    vi.advanceTimersByTime(20000);
+    expect(effects.show).toHaveBeenCalledTimes(2);
+    expect(effects.hide).toHaveBeenCalledExactlyOnceWith("red");
   });
 });

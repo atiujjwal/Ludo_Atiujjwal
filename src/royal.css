@@ -274,31 +274,32 @@ a:focus-visible {
   transition: transform 150ms ease-out;
 }
 
-.royal-crying-yard {
+.royal-cat-yard {
   position: absolute;
   pointer-events: none;
 }
-.royal-crying-teddy {
+.royal-house-cat {
   position: absolute;
-  left: 34%;
-  top: 34%;
+  left: 37%;
+  top: 37%;
   display: block;
-  width: 32%;
   aspect-ratio: 1;
   border: 2px solid var(--border);
   border-radius: 22%;
   overflow: hidden;
   box-shadow: 0 3px 12px var(--royal-shadow-medium);
-  animation: royal-crying 150ms ease-out both;
+  animation: royal-cat-enter 150ms ease-out both;
 }
-.royal-crying-teddy img {
+.royal-cat-media img {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: contain;
 }
-.royal-happy-teddy {
+.royal-cat-media {
   display: block;
-  width: min(112px, 28vw);
+  width: 48px;
+  height: 48px;
   aspect-ratio: 1;
   margin: 0 auto;
   overflow: hidden;
@@ -307,12 +308,21 @@ a:focus-visible {
   box-shadow: 0 3px 12px var(--royal-shadow-medium);
   pointer-events: none;
 }
-.royal-happy-teddy img {
-  display: block;
-  width: 100%;
-  height: auto;
+.royal-house-cat {
+  width: 26%;
+  height: 26%;
 }
-@keyframes royal-crying {
+.royal-rank-cat-row {
+  height: 48px;
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+  pointer-events: none;
+}
+.royal-result-cat {
+  flex-shrink: 0;
+}
+@keyframes royal-cat-enter {
   0% {
     opacity: 0;
     transform: scale(0.92);
@@ -323,7 +333,7 @@ a:focus-visible {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .royal-crying-teddy {
+  .royal-house-cat {
     animation: none;
   }
 }
@@ -571,7 +581,10 @@ a:focus-visible {
     padding: 8px;
     gap: 7px;
   }
-  .royal-player-panel > .royal-token {
+  .royal-player-info {
+    gap: 7px;
+  }
+  .royal-player-info > .royal-token {
     display: none;
   }
   .royal-game-screen > div:first-child {

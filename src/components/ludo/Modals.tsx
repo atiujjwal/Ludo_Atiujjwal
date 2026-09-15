@@ -2,7 +2,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { Crown } from "lucide-react";
 
 import { Token } from "@/components/ludo/Token";
-import { HappyTeddy } from "@/components/ludo/HappyTeddy";
+import { ResultCat } from "@/components/ludo/CatMedia";
+import { rankCats } from "@/lib/ludo/cat-effects";
 import { COLOR_ORDER } from "@/lib/ludo/board";
 import { PALETTE } from "@/lib/ludo/palette";
 
@@ -33,9 +34,10 @@ function Sheet({ title, children }: { title: string; children: React.ReactNode }
 interface Props {
   state: GameState;
   dispatch: React.Dispatch<Action>;
+  animateResults?: boolean;
 }
 
-export function GameModals({ state, dispatch }: Props) {
+export function GameModals({ state, dispatch, animateResults = false }: Props) {
   const navigate = useNavigate();
 
   if (state.activeModal === "SECOND_LAP_CHOICE") {
@@ -152,6 +154,7 @@ export function GameModals({ state, dispatch }: Props) {
   }
 
   if (state.activeModal === "GAME_OVER") {
+    const cats = rankCats(state);
     const ranked = [...state.players].sort((a, b) => (a.finishRank ?? 99) - (b.finishRank ?? 99));
     const teamWin = state.winnerTeam
       ? state.players.filter((p) => p.teamId === state.winnerTeam)
@@ -162,7 +165,6 @@ export function GameModals({ state, dispatch }: Props) {
 
     return (
       <Sheet title={teamWin ? "Team victory!" : "We have a winner!"}>
-        <HappyTeddy />
         <div aria-hidden className="pointer-events-none fixed inset-0 z-[60] overflow-hidden">
           {Array.from({ length: 12 }).map((_, i) => (
             <span
@@ -190,7 +192,9 @@ export function GameModals({ state, dispatch }: Props) {
           </span>
           <span className="min-w-0">
             <span className="flex items-center gap-1 truncate font-display text-xl leading-tight">
-              {champion.map((c) => c.nickname).join(" & ")}
+              <span className="min-w-0 truncate">
+                {champion.map((c) => c.nickname).join(" & ")}
+              </span>
               <Crown className="h-4 w-4 shrink-0 text-[var(--ludo-yellow)]" />
             </span>
             <span className="block text-xs font-semibold text-muted-foreground">
@@ -199,24 +203,34 @@ export function GameModals({ state, dispatch }: Props) {
           </span>
         </div>
 
-        {!teamWin && (
-          <ol className="space-y-2">
-            {ranked.map((pl) => (
-              <li
-                key={pl.id}
-                className="flex items-center justify-between rounded-xl bg-secondary px-3 py-2 text-sm font-semibold"
-              >
-                <span className="flex items-center gap-2">
-                  <Token color={pl.color} visual="idle" className="h-5 w-5" />
-                  {pl.finishRank ? `#${pl.finishRank}` : "—"} {pl.nickname}
+        <ol className="space-y-2">
+          {ranked.map((pl) => (
+            <li
+              key={pl.id}
+              className="flex min-w-0 items-center gap-2 rounded-xl bg-secondary px-3 py-2 text-sm font-semibold"
+              data-result-color={pl.color}
+            >
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <Token color={pl.color} visual="idle" className="h-5 w-5 shrink-0" />
+                <span className="truncate">
+                  {teamWin ? `Team ${pl.teamId}` : pl.finishRank ? `#${pl.finishRank}` : "—"}{" "}
+                  {pl.nickname}
                 </span>
-                <span className="text-muted-foreground">
-                  {tokensOf(state, pl.color).filter((t) => t.state === "finished").length}/4 home
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
+              </span>
+              {cats[pl.color] && (
+                <ResultCat
+                  key={`${pl.id}-${animateResults}`}
+                  cat={cats[pl.color]!}
+                  animate={animateResults}
+                  session={`results-${state.createdAt}-${pl.id}`}
+                />
+              )}
+              <span className="shrink-0 text-muted-foreground">
+                {tokensOf(state, pl.color).filter((t) => t.state === "finished").length}/4 home
+              </span>
+            </li>
+          ))}
+        </ol>
 
         <Button
           className="h-12 w-full"

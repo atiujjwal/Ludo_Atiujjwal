@@ -175,6 +175,91 @@ try {
   const frameIntervalsMs = await frames;
   const selectionFeedbackMs = await page.evaluate(() => window.__selectionFeedback);
   const orderedFrames = [...frameIntervalsMs].sort((a, b) => a - b);
+  let captureProfile;
+  if (label === "cats") {
+    // Use an actual saved 2P game as the fixture, then trigger a real UI capture.
+    await page.evaluate(() => {
+      const fixture = JSON.parse(localStorage.getItem("ludo:save:v1"));
+      for (const token of fixture.tokens)
+        Object.assign(token, { state: "base", steps: 0, lap: 0, secondLapUsed: false });
+      Object.assign(
+        fixture.tokens.find((token) => token.color === "red"),
+        { state: "common", steps: 0 },
+      );
+      Object.assign(
+        fixture.tokens.find((token) => token.color === "green"),
+        { state: "common", steps: 27 },
+      );
+      Object.assign(fixture.turn, {
+        currentPlayerId: fixture.players.find((player) => player.color === "red").id,
+        diceValue: null,
+        consecutiveSixes: 0,
+        owedExtraRoll: false,
+      });
+      Object.assign(fixture, {
+        phase: "idle",
+        pending: null,
+        legalMoves: [],
+        activeModal: "NONE",
+        rewardMove: false,
+        lastCapture: null,
+        createdAt: Date.now(),
+      });
+      localStorage.setItem("ludo:save:v1", JSON.stringify(fixture));
+    });
+    await page.goto(origin + "/game");
+    await page.evaluate(() =>
+      Object.defineProperty(crypto, "getRandomValues", {
+        configurable: true,
+        value: (buffer) => {
+          buffer.fill(0);
+          return buffer;
+        },
+      }),
+    );
+    const uncachedResponses = [];
+    const track = (response) => {
+      if (/\/(assets|animation|audio)\//.test(response.url()) && !response.fromServiceWorker())
+        uncachedResponses.push(response.url());
+    };
+    page.on("response", track);
+    await page.getByRole("button", { name: /Tap to roll/ }).click();
+    await page.waitForSelector('.royal-cat-yard[data-role="cutter"] img');
+    const captureFrames = page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const intervals = [];
+          let previous;
+          const start = performance.now();
+          function frame(now) {
+            if (previous !== undefined) intervals.push(now - previous);
+            previous = now;
+            if (now - start > 6300) resolve(intervals);
+            else requestAnimationFrame(frame);
+          }
+          requestAnimationFrame(frame);
+        }),
+    );
+    // The earned roll and next move must remain interactive during the effects.
+    await page.getByRole("button", { name: /Tap to roll/ }).click();
+    await page.waitForFunction(
+      () =>
+        JSON.parse(localStorage.getItem("ludo:save:v1")).tokens.find(
+          (token) => token.color === "red",
+        ).steps === 2,
+    );
+    const intervals = await captureFrames;
+    const ordered = [...intervals].sort((a, b) => a - b);
+    captureProfile = {
+      medianFrameIntervalMs: ordered[Math.floor(ordered.length / 2)],
+      p95FrameIntervalMs: ordered[Math.floor(ordered.length * 0.95)],
+      framesOver34Ms: intervals.filter((duration) => duration > 34).length,
+      measuredFrames: intervals.length,
+      moveCompletedWhileCatsVisible: true,
+      uncachedGameplayAssetResponses: uncachedResponses,
+    };
+    page.off("response", track);
+  }
   await mkdir(".artifacts", { recursive: true });
   const report = {
     label,
@@ -190,6 +275,7 @@ try {
     p95FrameIntervalMs: orderedFrames[Math.floor(orderedFrames.length * 0.95)],
     framesOver34Ms: frameIntervalsMs.filter((duration) => duration > 34).length,
     measuredFrames: frameIntervalsMs.length,
+    ...(captureProfile ? { captureProfile } : {}),
   };
   await writeFile(`.artifacts/performance-${label}.json`, JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));

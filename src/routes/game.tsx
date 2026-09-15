@@ -19,6 +19,7 @@ import {
 } from "@/lib/ludo/guidance";
 import { type Corner } from "@/lib/ludo/board";
 import type { Color } from "@/lib/ludo/types";
+import { useRankFeedback } from "@/lib/ludo/rank-feedback";
 
 export const Route = createFileRoute("/game")({
   head: () => ({
@@ -46,6 +47,7 @@ function GameScreen() {
   const navigate = useNavigate();
   const [rolling, setRolling] = useState(false);
   const guidance = guidanceEnabled(state.settings);
+  const rankFeedback = useRankFeedback(state, gameReady);
   const [notices] = useState(() =>
     createGuidanceNotices(state.messageId, {
       show: (message) => toast(message, { id: GAME_GUIDANCE_TOAST_ID }),
@@ -181,6 +183,11 @@ function GameScreen() {
           canRoll={canRoll}
           onRoll={roll}
           flip={corner === "tr" || corner === "br"}
+          rankCat={rankFeedback.active[p.color]}
+          onCatLoaded={() => {
+            const entry = rankFeedback.active[p.color];
+            if (entry) rankFeedback.loaded(p.color, entry.session);
+          }}
         />
       </div>
     );
@@ -259,7 +266,7 @@ function GameScreen() {
         {seat("br", "order-5 lg:col-start-3 lg:row-start-2")}
       </div>
 
-      <GameModals state={state} dispatch={dispatch} />
+      <GameModals state={state} dispatch={dispatch} animateResults={rankFeedback.animateResults} />
     </main>
   );
 }

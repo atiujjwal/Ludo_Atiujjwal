@@ -1,8 +1,10 @@
 import { chromium, expect, test, type Page } from "@playwright/test";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { brotliCompressSync, gzipSync } from "node:zlib";
-import { createGame, DEFAULT_HOUSE_RULES } from "../../src/lib/ludo/engine";
+import { createGame, DEFAULT_HOUSE_RULES, updateStandings } from "../../src/lib/ludo/engine";
+import type { Mode } from "../../src/lib/ludo/types";
 import { COLOR_ORDER, START_OFFSET } from "../../src/lib/ludo/board";
+import { CAT_IDS, catUrl } from "../../src/lib/ludo/cat-effects";
 
 test("closing the entire browser preserves cold offline new-game and resume support", async () => {
   await mkdir(".artifacts", { recursive: true });
@@ -37,7 +39,7 @@ test("closing the entire browser preserves cold offline new-game and resume supp
   }
 });
 
-test("capture feedback for every victim colour and victory animation work offline", async ({
+test("capture sequences for every colour and ranked results work offline", async ({
   page,
   context,
 }) => {
@@ -48,6 +50,7 @@ test("capture feedback for every victim colour and victory animation work offlin
     if (/\/audio\//.test(request.url())) sampleRequests.push(request.url());
   });
   for (const [index, victim] of COLOR_ORDER.entries()) {
+    await page.emulateMedia({ reducedMotion: index === 0 ? "reduce" : "no-preference" });
     const cutter = COLOR_ORDER[(index + 1) % 4]!;
     const state = createGame("4P", DEFAULT_HOUSE_RULES, {});
     state.turn.currentPlayerId = state.players.find((player) => player.color === cutter)!.id;
@@ -83,7 +86,7 @@ test("capture feedback for every victim colour and victory animation work offlin
     await expect
       .poll(() =>
         page
-          .locator(".royal-crying-teddy img")
+          .locator(`.royal-cat-yard[data-color="${victim}"][data-stage="0"] img`)
           .evaluateAll((images) =>
             images.some(
               (img) =>
@@ -94,6 +97,23 @@ test("capture feedback for every victim colour and victory animation work offlin
           ),
       )
       .toBe(true);
+    await expect(
+      page.locator(`.royal-cat-yard[data-color="${cutter}"] [data-cat="bleh-cat"]`),
+    ).toBeVisible();
+    if (index === 0) {
+      expect(
+        await page
+          .locator(`.royal-cat-yard[data-color="${victim}"] img`)
+          .evaluate((img: HTMLImageElement) => img.currentSrc),
+      ).toContain("banana-cat-crying-still.png");
+      await page.screenshot({ path: "test-results/cat-capture-houses.png" });
+    }
+    await expect(
+      page.locator(`.royal-cat-yard[data-color="${victim}"] [data-cat="crying-crying-cat"]`),
+    ).toBeVisible();
+    await expect(
+      page.locator(`.royal-cat-yard[data-color="${cutter}"] [data-cat="cat-orange-cat"]`),
+    ).toBeVisible();
     await page.waitForFunction(
       (color) =>
         JSON.parse(localStorage.getItem("ludo:save:v1")!).tokens.find(
@@ -106,19 +126,154 @@ test("capture feedback for every victim colour and victory animation work offlin
   for (const token of won.tokens.filter((token) => token.color === "red"))
     Object.assign(token, { state: "finished", steps: 56 });
   Object.assign(won.players[0]!, { finished: true, finishRank: 1 });
+  Object.assign(won.players[1]!, { finished: true, finishRank: 2 });
   won.phase = "over";
   won.activeModal = "GAME_OVER";
   await page.evaluate((won) => localStorage.setItem("ludo:save:v1", JSON.stringify(won)), won);
   await page.goto("/game");
-  await expect(page.locator(".royal-happy-teddy img")).toBeVisible();
-  await page.locator(".royal-happy-teddy img").evaluate((img: HTMLImageElement) => img.decode());
+  await expect(page.locator('[data-result-color="red"] [data-cat="babsb-cat"]')).toBeVisible();
+  await expect(
+    page.locator('[data-result-color="green"] [data-cat="crying-crying-cat"]'),
+  ).toBeVisible();
   await page.emulateMedia({ reducedMotion: "reduce" });
   expect(
     await page
-      .locator(".royal-happy-teddy img")
+      .locator('[data-result-color="red"] .royal-cat-media img')
       .evaluate((img: HTMLImageElement) => img.currentSrc),
-  ).toContain("happy_teddy-still.png");
+  ).toContain("babsb-cat-still.png");
   expect(sampleRequests).toEqual([]);
+});
+
+for (const mode of ["2P", "3P", "4P"] as Mode[]) {
+  test(`${mode} celebrates a new finish for three seconds without pausing remaining players`, async ({
+    page,
+    context,
+  }) => {
+    await prepared(page);
+    await context.setOffline(true);
+    const state = createGame(mode, DEFAULT_HOUSE_RULES, {});
+    const color = state.players[0]!.color;
+    const own = state.tokens.filter((token) => token.color === color);
+    for (const token of own) Object.assign(token, { state: "finished", steps: 56 });
+    Object.assign(own.at(-1)!, { state: "home_stretch", steps: 55 });
+    await page.evaluate(
+      (state) => localStorage.setItem("ludo:save:v1", JSON.stringify(state)),
+      state,
+    );
+    await page.goto("/game");
+    await page.evaluate(() =>
+      Object.defineProperty(crypto, "getRandomValues", {
+        configurable: true,
+        value: (buffer: Uint8Array) => {
+          buffer.fill(0);
+          return buffer;
+        },
+      }),
+    );
+    await page.getByRole("button", { name: /Tap to roll/ }).click();
+    const cat = page.locator(
+      `.royal-player-panel[data-player-color="${color}"] [data-cat="babsb-cat"]`,
+    );
+    await expect(cat).toBeAttached();
+    await expect
+      .poll(() =>
+        cat
+          .locator("img")
+          .evaluateAll((images) =>
+            images.some(
+              (img) =>
+                (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0,
+            ),
+          ),
+      )
+      .toBe(true);
+    if (mode !== "2P") {
+      await expect(page.getByRole("button", { name: /Tap to roll/ })).toBeEnabled();
+      expect(
+        await page.evaluate(() => JSON.parse(localStorage.getItem("ludo:save:v1")!).phase),
+      ).toBe("idle");
+      await page.screenshot({ path: `test-results/cat-${mode}-live.png` });
+    } else {
+      await expect(page.locator(".royal-result-cat")).toHaveCount(2);
+    }
+    await expect(cat).toHaveCount(0, { timeout: 8000 });
+    if (mode === "2P")
+      await expect(page.locator(".royal-result-cat")).toHaveCount(0, { timeout: 8000 });
+    await page.reload();
+    await expect(page.locator(".royal-rank-cat-row")).toHaveCount(0);
+  });
+}
+
+for (const team of ["A", "B"] as const) {
+  test(`team ${team} gets cats on both winning cards and both losing result cards offline`, async ({
+    page,
+    context,
+  }) => {
+    await prepared(page);
+    await context.setOffline(true);
+    const state = createGame("2V2", DEFAULT_HOUSE_RULES, {});
+    const winners = state.players.filter((player) => player.teamId === team);
+    for (const player of winners)
+      for (const token of state.tokens.filter((token) => token.color === player.color))
+        Object.assign(token, { state: "finished", steps: 56 });
+    const finisher = state.tokens.find((token) => token.color === winners[1]!.color)!;
+    Object.assign(finisher, { state: "home_stretch", steps: 55 });
+    updateStandings(state);
+    state.turn.currentPlayerId = winners[1]!.id;
+    await page.evaluate(
+      (state) => localStorage.setItem("ludo:save:v1", JSON.stringify(state)),
+      state,
+    );
+    await page.goto("/game");
+    await expect(page.locator(".royal-rank-cat-row")).toHaveCount(0);
+    await page.evaluate(() =>
+      Object.defineProperty(crypto, "getRandomValues", {
+        configurable: true,
+        value: (buffer: Uint8Array) => {
+          buffer.fill(0);
+          return buffer;
+        },
+      }),
+    );
+    await page.getByRole("button", { name: /Tap to roll/ }).click();
+    await expect(page.locator(".royal-result-cat")).toHaveCount(4);
+    await expect(page.locator('.royal-rank-cat-row [data-cat="babsb-cat"]')).toHaveCount(2);
+    await expect(page.locator('.royal-rank-cat-row [data-cat="crying-crying-cat"]')).toHaveCount(2);
+    await page.screenshot({ path: `test-results/cat-team-${team}-results.png` });
+  });
+}
+
+test("four-player resumed standings show all four correct static rank cats", async ({
+  page,
+  context,
+}) => {
+  await prepared(page);
+  await context.setOffline(true);
+  const state = createGame("4P", DEFAULT_HOUSE_RULES, {});
+  for (const player of state.players.slice(0, -1)) {
+    for (const token of state.tokens.filter((token) => token.color === player.color))
+      Object.assign(token, { state: "finished", steps: 56 });
+    updateStandings(state);
+  }
+  await page.evaluate(
+    (state) => localStorage.setItem("ludo:save:v1", JSON.stringify(state)),
+    state,
+  );
+  await page.goto("/game");
+  await expect(page.locator(".royal-result-cat")).toHaveCount(4);
+  for (const [index, cat] of [
+    "babsb-cat",
+    "dancing-cat-ai",
+    "happy-cat",
+    "crying-crying-cat",
+  ].entries()) {
+    const row = page.locator(`[data-result-color="${state.players[index]!.color}"]`);
+    await expect(row.locator(`[data-cat="${cat}"]`)).toBeVisible();
+    expect(await row.locator("img").evaluate((img: HTMLImageElement) => img.currentSrc)).toContain(
+      `${cat}-still.png`,
+    );
+  }
+  await page.screenshot({ path: "test-results/cat-four-ranks.png" });
 });
 
 test("install action waits for verification and uses a fresh tap once ready", async ({
@@ -128,7 +283,7 @@ test("install action waits for verification and uses a fresh tap once ready", as
   await page.addInitScript(() =>
     Object.defineProperty(navigator, "userAgent", { value: "Android Chrome" }),
   );
-  await context.route("**/happy_teddy.gif", (route) => route.abort("failed"));
+  await context.route("**/animation/babsb-cat.gif", (route) => route.abort("failed"));
   await page.goto("/");
   await page.evaluate(() => {
     const prompt = Object.assign(new Event("beforeinstallprompt"), {
@@ -144,7 +299,7 @@ test("install action waits for verification and uses a fresh tap once ready", as
   await expect(page.getByRole("heading", { name: "Preparing your offline game" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.dataset.prompted)).toBeUndefined();
   await expect(page.getByRole("button", { name: "Retry" }).last()).toBeVisible();
-  await context.unroute("**/happy_teddy.gif");
+  await context.unroute("**/animation/babsb-cat.gif");
   await page.getByRole("button", { name: "Retry" }).last().click();
   await expect(page.getByRole("heading", { name: "Add Ludo to your Home Screen" })).toBeVisible({
     timeout: 30000,
@@ -217,27 +372,27 @@ test("all shipped images, animations, icons and chunks are cached including JPEG
 }) => {
   await prepared(page);
   await context.setOffline(true);
-  const result = await page.evaluate(async () => {
-    const urls = [
-      "/logo.jpeg?v=2",
-      "/favicon.png",
-      "/manifest.webmanifest",
-      "/crying_teddy.gif",
-      "/crying_teddy-still.png",
-      "/happy_teddy.gif",
-      "/happy_teddy-still.png",
-      "/icons/icon-192.png",
-      "/icons/icon-512.png",
-      "/icons/icon-maskable.png",
-      "/icons/apple-touch-icon.png",
-    ];
-    return await Promise.all(
-      urls.map(async (url) => {
-        const response = await fetch(url);
-        return { url, ok: response.ok, bytes: (await response.arrayBuffer()).byteLength };
-      }),
-    );
-  });
+  const result = await page.evaluate(
+    async (cats) => {
+      const urls = [
+        "/logo.jpeg?v=2",
+        "/favicon.png",
+        "/manifest.webmanifest",
+        ...cats,
+        "/icons/icon-192.png",
+        "/icons/icon-512.png",
+        "/icons/icon-maskable.png",
+        "/icons/apple-touch-icon.png",
+      ];
+      return await Promise.all(
+        urls.map(async (url) => {
+          const response = await fetch(url);
+          return { url, ok: response.ok, bytes: (await response.arrayBuffer()).byteLength };
+        }),
+      );
+    },
+    CAT_IDS.flatMap((cat) => [catUrl(cat) + "?effect=test", catUrl(cat, true)]),
+  );
   expect(result.every((file) => file.ok && file.bytes > 0)).toBe(true);
 });
 
@@ -397,11 +552,11 @@ test("interrupted first preparation remains playable online and retry completes 
   page,
   context,
 }) => {
-  await context.route("**/happy_teddy.gif", (route) => route.abort("failed"));
+  await context.route("**/animation/babsb-cat.gif", (route) => route.abort("failed"));
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Retry" })).toBeVisible({ timeout: 30000 });
   await newGame(page);
-  await context.unroute("**/happy_teddy.gif");
+  await context.unroute("**/animation/babsb-cat.gif");
   await page.goto("/");
   const retry = page.getByRole("button", { name: "Retry" });
   if (await retry.count()) await retry.click();

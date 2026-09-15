@@ -4,7 +4,7 @@
 
 The custom `/sw.js` verifies every required file against its build-time content hash before reporting **Ready to play offline**. Preparation uses four concurrent downloads and retries; a failed candidate cannot replace the working revision. The final browser install prompt requires a fresh tap after verification. Play is available during preparation.
 
-The inventory includes `/`, `/setup`, `/game`, `/rules`, `/settings`, browser bundles, CSS, JPEG branding, icons and the used teddy GIF/static assets. Fonts are system fonts. Sound samples are discovered during the build; missing samples use synthesis without speculative requests. Crying audio remains removed. Known asset query strings resolve to the cached file; unknown routes retain genuine 404 behavior.
+The inventory includes `/`, `/setup`, `/game`, `/rules`, `/settings`, browser bundles, CSS, JPEG branding, icons and the used cat GIF/static assets. Fonts are system fonts. Sound samples are discovered during the build; missing samples use synthesis without speculative requests. Crying audio remains removed. Known asset query strings resolve to the cached file; unknown routes retain genuine 404 behavior. The size/timing measurements below describe the original offline optimization release; see [CAT_EFFECTS_VERIFICATION.md](./CAT_EFFECTS_VERIFICATION.md) for the subsequent cat replacement and current media/cache growth.
 
 Existing installations verify their local cache before checking for updates. Cached navigation does not wait for a network response. Missing required cached files produce an honest recovery warning rather than a false readiness claim.
 
@@ -72,7 +72,7 @@ Unit tests additionally exercise corrupt responses, completion markers, older-cl
 3. Open the installed app online. Set appearance and sound/music/vibration; start a game with house rules. Complete a move so a stable checkpoint is saved.
 4. Disable both Wi-Fi and mobile data. Fully close the installed app/browser process, then reopen from its home-screen icon.
 5. Resume the saved game; visit rules/settings and return. Start a new game offline. Check 2P, 3P, 4P and teams, both themes, all colours, stacks, dice, legal moves, captures, five-cell home lanes, finishes and victory.
-6. Confirm teddy graphics, synthesized/available sampled sounds and mute behavior. Verify audio stops when hidden or muted and capture feedback remains independent of suggestions.
+6. Confirm cat sequences/rank graphics, synthesized/available sampled sounds and mute behavior. Verify audio stops when hidden or muted and capture feedback remains independent of suggestions.
 7. Clear a game and reopen; it must not return. Device preferences must remain. Confirm theme changes and preference changes survive another offline close/reopen.
 8. Restore connectivity and deploy an update with a game open in one window. It must not reload mid-play. Leave gameplay/close other game windows, then explicitly refresh from home. The saved game, pending choices and earned bonuses must remain intact.
 9. Interrupt a new revision's preparation. The previous verified app must still reopen offline. Reconnect and retry. Also test low-storage and user-cleared-storage recovery messages.

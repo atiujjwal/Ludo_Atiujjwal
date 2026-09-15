@@ -73,12 +73,7 @@ try {
           entry.name,
         ) &&
         relative !== "/sw.js" &&
-        ![
-          "/audio/crying_audio.mp3",
-          "/animation/crying_teddy.gif",
-          "/animation/crying_teddy-still.png",
-          "/animation/happy_teddy.gif",
-        ].includes(relative)
+        relative !== "/audio/crying_audio.mp3"
       )
         result.push(relative);
     }

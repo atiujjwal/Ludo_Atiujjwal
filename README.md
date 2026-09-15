@@ -46,7 +46,7 @@ The application manifest, service worker, favicon, and home-screen icons are ser
 
 `bun run build` also runs `scripts/build-offline.mjs` after Nitro finishes. It renders all five routes, hashes the browser assets and generated HTML, and writes the revisioned `.output/public/sw.js`. A small Nitro runtime plugin serves these post-build files with current metadata. Deploy the **entire** generated `.output`, not the source `public/sw.js` template.
 
-The home and install screens show preparation progress followed by “Ready to play offline”. Readiness requires a complete cache, not merely an active worker. The worker downloads four files at a time, validates content hashes, and stores a completion marker only after every required file succeeds. All five routes, browser chunks, CSS, current JPEG branding, icons and teddy animations are included. System fonts and synthesized sounds need no external downloads; optional sample files are discovered at build time, so absent samples generate no requests.
+The home and install screens show preparation progress followed by “Ready to play offline”. Readiness requires a complete cache, not merely an active worker. The worker downloads four files at a time, validates content hashes, and stores a completion marker only after every required file succeeds. All five routes, browser chunks, CSS, current JPEG branding, icons and cat animations/static frames are included. System fonts and synthesized sounds need no external downloads; optional sample files are discovered at build time, so absent samples generate no requests.
 
 “Install on your phone” requests browser-managed persistent storage and starts/retries preparation. The final “Install now” action or iOS instructions appear after verification; Android prompting uses that fresh tap. Gameplay never waits for installation, cache completion, or an internet response. Install controls are hidden in standalone mode. Browsers can still deny persistent storage, evict data under pressure, or clear it at the user's request.
 
@@ -84,9 +84,11 @@ See [ROYAL_VERIFICATION.md](./ROYAL_VERIFICATION.md) for measured build sizes, a
 
 See [STACKING_GUIDANCE_VERIFICATION.md](./STACKING_GUIDANCE_VERIFICATION.md) for the stable-stack and unified-guidance regression results and pending browser checks.
 
-Capture feedback uses `/crying_teddy.gif`, with `/crying_teddy-still.png` for reduced motion. Each victim's corner displays one temporary overlay for 2.5 seconds after image loading, independent of move suggestions. No crying sound is played or fetched. The teddy assets are revisioned and precached for offline games; the original source assets are retained without duplicate precaching.
+Capture feedback uses the cats under `/animation`: the actual cutter's corner shows `bleh-cat.gif`, then `cat-orange-cat.gif`; every victim's corner shows `banana-cat-crying.gif`, then `crying-crying-cat.gif`. Each stage lasts three seconds after loading (six seconds per sequence). New captures replace older sequences for the same colour. Effects never pause gameplay and remain independent of suggestions; no cat or crying audio is added.
 
-The winner dialog includes `/happy_teddy.gif` for both individual and team victories. After five seconds of loaded playback it switches to `/happy_teddy-still.png`; reduced motion uses that static frame immediately. Both assets are precached, and the celebration adds no sound or gameplay actions.
+Individual finishes show rank cats in a separate 48px player-card row for three seconds: first `babsb-cat.gif`, second `dancing-cat-ai.gif`, third `happy-cat.gif` where applicable. The remaining loser gets `crying-crying-cat.gif` at game end. In teams, both winners get the first-place cat and both losers the crying cat only when the complete team wins. Final results include every player's corresponding cat; completed-game resume uses static artwork without replaying old celebrations.
+
+Deployment copies of the seven cat GIFs are optimized, and static frames are generated for reduced motion/hidden pages. All fourteen media files are hash-verified and precached before installation readiness. Source cat originals remain intact; obsolete teddy assets and components are removed. See [CAT_EFFECTS_VERIFICATION.md](./CAT_EFFECTS_VERIFICATION.md) for checks, media growth and performance measurements.
 
 See [HOME_PATH_CAPTURE_VERIFICATION.md](./HOME_PATH_CAPTURE_VERIFICATION.md) for regression results and pending device checks.
 
