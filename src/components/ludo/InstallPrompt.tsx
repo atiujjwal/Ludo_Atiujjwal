@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
-import { Download, MoreVertical, Plus, Share2 } from "lucide-react";
+import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from "react";
+import { Download } from "lucide-react";
 
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { OfflineStatus } from "./OfflineStatus";
+import {
+  offlineDetailsSnapshot,
+  offlineDetailsServerSnapshot,
+  subscribeOffline,
+  registerOfflineSupport,
+  requestPersistentStorage,
+} from "@/lib/ludo/register-sw";
+const InstallHelp = lazy(() => import("./InstallHelp"));
 
 type DeferredPrompt = Event & {
   prompt: () => Promise<void>;
@@ -31,6 +37,11 @@ function isStandalone(): boolean {
 }
 
 export function InstallButton() {
+  const { ready } = useSyncExternalStore(
+    subscribeOffline,
+    offlineDetailsSnapshot,
+    offlineDetailsServerSnapshot,
+  );
   const [platform, setPlatform] = useState<MobilePlatform>(null);
   const [available, setAvailable] = useState(false);
   const [installed, setInstalled] = useState(false);
@@ -74,6 +85,12 @@ export function InstallButton() {
   }, []);
 
   const handleInstall = async () => {
+    void requestPersistentStorage();
+    if (!ready) {
+      setShowHelp(true);
+      void registerOfflineSupport();
+      return;
+    }
     if (platform === "ios" || !deferredPrompt) {
       setShowHelp(true);
       return;
@@ -107,51 +124,20 @@ export function InstallButton() {
         aria-label="Install Ludo on this phone"
       >
         <Download className="h-5 w-5 transition-transform group-active:translate-y-0.5" />
-        Install on your phone
+        {ready ? "Install now" : "Install on your phone"}
       </button>
 
-      <Dialog open={showHelp} onOpenChange={setShowHelp}>
-        <DialogContent className="w-[calc(100%-2rem)] max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-[2rem] border-border bg-card p-6 shadow-[var(--elev-3)] [&>button:last-child]:min-h-11 [&>button:last-child]:min-w-11">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-card shadow-[var(--elev-2)]">
-            <img src="/logo.png" alt="" className="h-14 w-14 rounded-xl" />
-          </div>
-          <div className="text-center">
-            <DialogTitle className="font-display text-2xl text-[var(--ink)]">
-              Add Ludo to your Home Screen
-            </DialogTitle>
-            <DialogDescription className="mt-1 font-semibold">
-              Launch faster and keep playing offline.
-            </DialogDescription>
-          </div>
-
-          <ol className="mt-1 space-y-3">
-            {(isIOS
-              ? [
-                  { icon: Share2, text: "Tap the Share button in your browser." },
-                  { icon: Plus, text: "Choose “Add to Home Screen”." },
-                  { icon: Download, text: "Tap Add to install Ludo." },
-                ]
-              : [
-                  { icon: MoreVertical, text: "Open your browser menu." },
-                  { icon: Plus, text: "Choose “Install app” or “Add to Home screen”." },
-                  { icon: Download, text: "Confirm Install." },
-                ]
-            ).map(({ icon: Icon, text }, index) => (
-              <li
-                key={text}
-                className="flex items-center gap-3 rounded-2xl bg-card p-3 shadow-[var(--elev-1)]"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--ludo-blue-soft)] font-black text-[var(--ludo-blue-light)]">
-                  {index + 1}
-                </span>
-                <span className="flex-1 text-sm font-bold text-[var(--ink)]">{text}</span>
-                <Icon className="h-5 w-5 shrink-0 text-[var(--ludo-blue)]" />
-              </li>
-            ))}
-          </ol>
-          <OfflineStatus />
-        </DialogContent>
-      </Dialog>
+      {showHelp && (
+        <Suspense fallback={<p role="status">Opening offline preparation…</p>}>
+          <InstallHelp
+            ready={ready}
+            isIOS={isIOS}
+            canPrompt={!!deferredPrompt && !isIOS}
+            onInstall={() => void handleInstall()}
+            onClose={() => setShowHelp(false)}
+          />
+        </Suspense>
+      )}
     </>
   );
 }

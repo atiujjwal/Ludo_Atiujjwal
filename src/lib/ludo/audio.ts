@@ -63,10 +63,45 @@ const RECIPES: Record<SfxName, Note[]> = {
 let ctx: AudioContext | null = null;
 let enabled = true;
 let hapticsEnabled = true;
+declare const __LUDO_AUDIO_FILES__: string[];
+const availableSamples = new Set(
+  typeof __LUDO_AUDIO_FILES__ === "undefined" ? [] : __LUDO_AUDIO_FILES__,
+);
+const voices = new Map<OscillatorNode, { gain: GainNode; music: boolean }>();
+let musicRequested = false;
+let visibilityInstalled = false;
+const hidden = () => typeof document !== "undefined" && document.hidden;
+
+function stopVoices(musicOnly = false) {
+  for (const [osc, voice] of voices) {
+    if (musicOnly && !voice.music) continue;
+    try {
+      osc.stop();
+    } catch {
+      /* already ended */
+    }
+    osc.disconnect();
+    voice.gain.disconnect();
+    voices.delete(osc);
+  }
+}
+function trackVoice(osc: OscillatorNode, gain: GainNode, music: boolean) {
+  voices.set(osc, { gain, music });
+  osc.onended = () => {
+    osc.disconnect();
+    gain.disconnect();
+    voices.delete(osc);
+  };
+}
 
 export function configureAudio(sound: boolean, haptics: boolean): void {
   enabled = sound;
   hapticsEnabled = haptics;
+  if (!sound) {
+    stopVoices();
+    stopSamples();
+  }
+  restartMusic();
 }
 
 /** Must run inside a user gesture (iOS requirement). */
@@ -80,14 +115,32 @@ export function unlockAudio(): void {
       if (!Ctor) return;
       ctx = new Ctor();
     }
-    void ctx.resume().catch(() => {});
+    void ctx
+      .resume()
+      .then(() => {
+        if (musicTimer === null) restartMusic();
+      })
+      .catch(() => {});
+    if (!visibilityInstalled && typeof document !== "undefined") {
+      visibilityInstalled = true;
+      document.addEventListener("visibilitychange", () => {
+        if (hidden()) {
+          stopVoices();
+          stopSamples();
+          void ctx?.suspend().catch(() => {});
+        }
+        // Audio resumes on the next actual interaction, respecting autoplay rules.
+        restartMusic();
+      });
+    }
+    if (musicTimer === null) restartMusic();
   } catch {
     ctx = null;
   }
 }
 
 function playSynth(name: SfxName): void {
-  if (!enabled || typeof window === "undefined") return;
+  if (!enabled || hidden() || typeof window === "undefined") return;
   if (!ctx) unlockAudio();
   if (!ctx || ctx.state === "suspended") return;
   const audio = ctx;
@@ -102,6 +155,7 @@ function playSynth(name: SfxName): void {
     gain.gain.exponentialRampToValueAtTime(peak, start + 0.012);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + note.dur);
     osc.connect(gain).connect(audio.destination);
+    trackVoice(osc, gain, false);
     osc.start(start);
     osc.stop(start + note.dur + 0.02);
   }
@@ -134,16 +188,27 @@ const VOLUME: Partial<Record<SfxName, number>> = {
 };
 
 type SampleState = "unknown" | "ready" | "missing";
-const samples = new Map<string, { el: HTMLAudioElement; status: SampleState }>();
+const samples = new Map<
+  string,
+  { el: HTMLAudioElement; status: SampleState; pool: HTMLAudioElement[] }
+>();
+function stopSamples() {
+  for (const entry of samples.values())
+    for (const el of entry.pool) {
+      el.pause();
+      el.currentTime = 0;
+    }
+}
 
 function sample(name: SfxName): HTMLAudioElement | null {
   if (typeof window === "undefined" || typeof Audio === "undefined") return null;
   const file = FILES[name];
+  if (!availableSamples.has(file)) return null;
   let entry = samples.get(file);
   if (!entry) {
     const el = new Audio(`/audio/${file}`);
     el.preload = "auto";
-    entry = { el, status: "unknown" };
+    entry = { el, status: "unknown", pool: [el] };
     el.addEventListener("canplaythrough", () => {
       entry!.status = "ready";
     });
@@ -152,18 +217,26 @@ function sample(name: SfxName): HTMLAudioElement | null {
     });
     samples.set(file, entry);
   }
-  return entry.status === "ready" ? entry.el : null;
+  if (entry.status !== "ready") return null;
+  let node = entry.pool.find((el) => el.paused || el.ended);
+  if (!node && entry.pool.length < 4) {
+    node = entry.el.cloneNode(true) as HTMLAudioElement;
+    entry.pool.push(node);
+  }
+  node ??= entry.pool[0]!;
+  node.pause();
+  node.currentTime = 0;
+  return node;
 }
 
 /** Play a named cue: real sample when available, synthesized blip otherwise. */
 export function playSfx(name: SfxName): void {
-  if (!enabled || typeof window === "undefined") return;
+  if (!enabled || hidden() || typeof window === "undefined") return;
   const el = sample(name);
   if (el) {
     try {
-      const node = el.cloneNode(true) as HTMLAudioElement;
-      node.volume = VOLUME[name] ?? 0.8;
-      void node.play().catch(() => playSynth(name));
+      el.volume = VOLUME[name] ?? 0.8;
+      void el.play().catch(() => playSynth(name));
       return;
     } catch {
       /* fall through to synth */
@@ -183,7 +256,7 @@ const MUSIC_BAR: Note[] = [
 let musicTimer: number | null = null;
 
 function playMusicBar(): void {
-  if (!ctx || ctx.state === "suspended") return;
+  if (!enabled || hidden() || !ctx || ctx.state === "suspended") return;
   const audio = ctx;
   for (const note of MUSIC_BAR) {
     const start = audio.currentTime + (note.delay ?? 0);
@@ -196,6 +269,7 @@ function playMusicBar(): void {
     gain.gain.exponentialRampToValueAtTime(peak, start + 0.4);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + note.dur);
     osc.connect(gain).connect(audio.destination);
+    trackVoice(osc, gain, true);
     osc.start(start);
     osc.stop(start + note.dur + 0.05);
   }
@@ -203,13 +277,17 @@ function playMusicBar(): void {
 
 /** Start or stop the looping background music. Silent until audio is unlocked. */
 export function setMusicEnabled(on: boolean): void {
+  musicRequested = on;
+  restartMusic();
+}
+function restartMusic(): void {
   if (typeof window === "undefined") return;
   if (musicTimer !== null) {
     window.clearInterval(musicTimer);
     musicTimer = null;
   }
-  if (!on) return;
-  unlockAudio();
+  stopVoices(true);
+  if (!musicRequested || !enabled || hidden() || !ctx || ctx.state === "suspended") return;
   playMusicBar();
   musicTimer = window.setInterval(playMusicBar, 4200);
 }

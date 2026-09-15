@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import { brotliCompressSync, gzipSync } from "node:zlib";
 
 const publicDir = resolve(".output/public");
 const routes = ["/", "/setup", "/game", "/rules", "/settings"];
@@ -68,7 +69,9 @@ try {
       const relative = prefix + "/" + entry.name;
       if (entry.isDirectory()) result.push(...(await files(resolve(dir, entry.name), relative)));
       else if (
-        /\.(?:js|css|html|png|ico|svg|webp|gif|mp3|woff2?|webmanifest)$/.test(entry.name) &&
+        /\.(?:js|css|html|png|jpe?g|ico|svg|webp|avif|gif|mp3|ogg|wav|m4a|woff2?|webmanifest)$/i.test(
+          entry.name,
+        ) &&
         relative !== "/sw.js" &&
         ![
           "/audio/crying_audio.mp3",
@@ -83,6 +86,7 @@ try {
   }
   const precache = await files(publicDir);
   const hash = createHash("sha256");
+  const integrity = {};
   const template = await readFile("public/sw.js", "utf8");
   hash.update(template);
   let bytes = 0;
@@ -90,6 +94,7 @@ try {
     const content = await readFile(resolve(publicDir, file.slice(1)));
     bytes += content.length;
     hash.update(file).update(content);
+    integrity[file] = createHash("sha256").update(content).digest("hex");
   }
   const missing = await fetch(base + "/not-a-ludo-route");
   if (missing.status !== 404) throw new Error("Unknown routes must retain their 404 status.");
@@ -105,8 +110,22 @@ try {
     .replace(
       "const NAVIGATION = {}; // __NAVIGATION__",
       "const NAVIGATION = " + JSON.stringify(navigation) + ";",
+    )
+    .replace(
+      "const INTEGRITY = {}; // __INTEGRITY__",
+      "const INTEGRITY = " + JSON.stringify(integrity) + ";",
     );
   await writeFile(resolve(publicDir, "sw.js"), worker);
+  // Portable Node deployment serves negotiated compression without a proxy.
+  for (const file of [...precache, "/sw.js"].filter((file) =>
+    /\.(js|css|html|svg|webmanifest)$/.test(file),
+  )) {
+    const content = await readFile(resolve(publicDir, file.slice(1)));
+    await Promise.all([
+      writeFile(resolve(publicDir, file.slice(1) + ".gz"), gzipSync(content)),
+      writeFile(resolve(publicDir, file.slice(1) + ".br"), brotliCompressSync(content)),
+    ]);
+  }
   // Read over HTTP too: post-build files must bypass Nitro's pre-build metadata.
   const servedWorker = await fetch(base + "/sw.js");
   if (!servedWorker.ok || (await servedWorker.text()) !== worker) {
@@ -115,9 +134,12 @@ try {
   for (const file of precache) {
     const response = await fetch(base + file);
     if (!response.ok) throw new Error("Precache asset is not served: " + file);
+    const served = Buffer.from(await response.arrayBuffer());
+    if (createHash("sha256").update(served).digest("hex") !== integrity[file])
+      throw new Error("Served asset differs from precache: " + file);
     if (
       file.startsWith("/offline/") &&
-      !(await response.text()).includes('data-appearance="royal"')
+      !served.toString("utf8").includes('data-appearance="royal"')
     ) {
       throw new Error("Invalid served offline page: " + file);
     }

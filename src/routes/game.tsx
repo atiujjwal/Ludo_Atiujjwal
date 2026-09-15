@@ -1,9 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, BellOff, LogOut, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 
-import { LudoBoard } from "@/components/ludo/LudoBoard";
+import { MemoizedLudoBoard as LudoBoard } from "@/components/ludo/LudoBoard";
 import { GameModals } from "@/components/ludo/Modals";
 import { PlayerPanel } from "@/components/ludo/PlayerPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -12,7 +12,6 @@ import { controllingColor, playerById, playerAtCorner } from "@/lib/ludo/engine"
 import { PALETTE } from "@/lib/ludo/palette";
 import { useGame } from "@/lib/ludo/store";
 import { playSfx, unlockAudio, vibrate } from "@/lib/ludo/audio";
-import { hasSave } from "@/lib/ludo/persistence";
 import {
   createGuidanceNotices,
   GAME_GUIDANCE_TOAST_ID,
@@ -43,7 +42,7 @@ export const Route = createFileRoute("/game")({
 });
 
 function GameScreen() {
-  const { state, dispatch, ready: gameReady } = useGame();
+  const { state, dispatch, ready: gameReady, hasGame } = useGame();
   const navigate = useNavigate();
   const [rolling, setRolling] = useState(false);
   const guidance = guidanceEnabled(state.settings);
@@ -58,16 +57,19 @@ function GameScreen() {
   const [celebrate, setCelebrate] = useState<{ color: Color; id: number } | null>(null);
   const completedIds = useRef<Set<string> | null>(null);
   const celebrationTimer = useRef<number | undefined>(undefined);
+  const selectToken = useCallback(
+    (tokenId: string) => {
+      playSfx("uiTap");
+      vibrate(10);
+      dispatch({ type: "SELECT_TOKEN", tokenId });
+    },
+    [dispatch],
+  );
 
   useEffect(() => {
     setReady(true);
-    if (!hasSave() && state.turn.diceValue === null && state.phase === "idle") {
-      if (typeof window !== "undefined" && !window.localStorage.getItem("ludo:save:v1")) {
-        void navigate({ to: "/setup" });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (gameReady && !hasGame) void navigate({ to: "/setup" });
+  }, [gameReady, hasGame, navigate]);
 
   useEffect(() => {
     notices.update(state.messageId, state.message, guidance);
@@ -249,11 +251,7 @@ function GameScreen() {
             selectableTokenIds={selectable}
             activeColor={acting}
             celebrate={celebrate}
-            onSelect={(tokenId) => {
-              playSfx("uiTap");
-              vibrate(10);
-              dispatch({ type: "SELECT_TOKEN", tokenId });
-            }}
+            onSelect={selectToken}
           />
         </div>
 

@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { Token } from "./Token";
-import { BoardPiece } from "./BoardPiece";
+import { MemoizedBoardPiece as BoardPiece } from "./BoardPiece";
 import { guidanceEnabled } from "@/lib/ludo/guidance";
 import { BoardArtwork } from "./BoardArtwork";
 import { cellStyle, colorStyle } from "@/lib/ludo/board-style";
@@ -29,6 +29,18 @@ interface Props {
   theme?: BoardTheme;
   tokenSkin?: TokenSkin;
 }
+
+// Local dice-face/roll UI updates don't change board state or legal guidance.
+export const MemoizedLudoBoard = memo(
+  LudoBoard,
+  (a, b) =>
+    a.state === b.state &&
+    a.activeColor === b.activeColor &&
+    a.onSelect === b.onSelect &&
+    a.celebrate === b.celebrate &&
+    a.theme === b.theme &&
+    a.tokenSkin === b.tokenSkin,
+);
 
 export function LudoBoard({
   state,

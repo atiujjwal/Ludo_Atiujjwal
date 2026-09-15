@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useGame } from "@/lib/ludo/store";
-import { clearSave } from "@/lib/ludo/persistence";
 import { guidanceEnabled } from "@/lib/ludo/guidance";
 import { playSfx } from "@/lib/ludo/audio";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -92,7 +91,7 @@ function SettingsScreen() {
         variant="destructive"
         className="mt-8 h-12 w-full rounded-2xl"
         onClick={() => {
-          clearSave();
+          dispatch({ type: "RESET" });
           toast("Saved game cleared.");
           void navigate({ to: "/" });
         }}

@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 .output
+.artifacts/
+test-results/
+playwright-report/
 .vinxi
 .tanstack/**
 .nitro

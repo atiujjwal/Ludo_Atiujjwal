@@ -1,4 +1,5 @@
 import { Token, type TokenVisualState } from "./Token";
+import { memo } from "react";
 import type { positionTokens } from "@/lib/ludo/presentation";
 import type { TokenSkin } from "@/lib/ludo/theme";
 
@@ -54,3 +55,26 @@ export function BoardPiece({
     </div>
   );
 }
+
+// Reducer snapshots clone tokens, so object identity alone isn't a useful memo
+// key. Compare only presentation fields; stationary counters don't rerender on hops.
+export const MemoizedBoardPiece = memo(
+  BoardPiece,
+  (a, b) =>
+    a.item.token.id === b.item.token.id &&
+    a.item.token.color === b.item.token.color &&
+    a.item.cell.col === b.item.cell.col &&
+    a.item.cell.row === b.item.cell.row &&
+    a.item.count === b.item.count &&
+    a.item.offset.x === b.item.offset.x &&
+    a.item.offset.y === b.item.offset.y &&
+    a.item.offset.width === b.item.offset.width &&
+    a.item.offset.height === b.item.offset.height &&
+    a.legal === b.legal &&
+    a.moving === b.moving &&
+    a.settling === b.settling &&
+    a.visual === b.visual &&
+    a.label === b.label &&
+    a.skin === b.skin &&
+    a.onSelect === b.onSelect,
+);

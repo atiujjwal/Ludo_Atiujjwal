@@ -69,7 +69,7 @@ function HomeMenu() {
       <header className="relative text-center">
         <p className="royal-eyebrow mb-5">A royal Indian pastime</p>
         <img
-          src="/logo.png"
+          src="/logo.jpeg"
           alt="atiUjjwal Ludo Game"
           className="mx-auto mb-6 h-28 w-28 rounded-[1.6rem] shadow-[var(--elev-3)]"
         />

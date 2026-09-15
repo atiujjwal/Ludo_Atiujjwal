@@ -27,7 +27,7 @@ export function renderErrorPage(): string {
   </head>
   <body>
     <div class="card">
-      <img src="/logo.png" alt="Ludo" width="64" height="64" style="border-radius:16px;margin-bottom:20px" />
+      <img src="/logo.jpeg" alt="Ludo" width="64" height="64" style="border-radius:16px;margin-bottom:20px" />
       <h1>This page didn't load</h1>
       <p>Something went wrong on our end. You can try refreshing or head back home.</p>
       <div class="actions">

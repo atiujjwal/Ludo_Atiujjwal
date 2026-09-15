@@ -1,20 +1,28 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
   Link,
-  createRootRouteWithContext,
+  createRootRoute,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { AppThemeProvider } from "@/components/AppThemeProvider";
 import { THEME_BOOTSTRAP, THEME_COLORS } from "@/lib/app-theme";
 import { GameProvider } from "@/lib/ludo/store";
-import { registerOfflineSupport } from "../lib/ludo/register-sw";
-import { Toaster } from "../components/ui/sonner";
+import {
+  registerOfflineSupport,
+  subscribeOffline,
+  offlineDetailsSnapshot,
+  offlineDetailsServerSnapshot,
+} from "../lib/ludo/register-sw";
+import { StorageWarning } from "@/components/ludo/StorageWarning";
+const Toaster = lazy(() =>
+  import("../components/ui/sonner").then((module) => ({ default: module.Toaster })),
+);
 
 function NotFoundComponent() {
   return (
@@ -73,7 +81,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   );
 }
 
-export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+export const Route = createRootRoute({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -128,23 +136,30 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 function RootComponent() {
-  const { queryClient } = Route.useRouteContext();
-
+  const pathname = useRouterState({ select: (router) => router.location.pathname });
   return (
     <AppThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <GameProvider>
-          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-          <Outlet />
-          <OfflineBanner />
-          <Toaster position="bottom-center" />
-        </GameProvider>
-      </QueryClientProvider>
+      <GameProvider>
+        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+        <Outlet />
+        <OfflineBanner />
+        <StorageWarning />
+        {(pathname === "/game" || pathname === "/settings") && (
+          <Suspense fallback={null}>
+            <Toaster position="bottom-center" />
+          </Suspense>
+        )}
+      </GameProvider>
     </AppThemeProvider>
   );
 }
 
 function OfflineBanner() {
+  const { ready } = useSyncExternalStore(
+    subscribeOffline,
+    offlineDetailsSnapshot,
+    offlineDetailsServerSnapshot,
+  );
   const [offline, setOffline] = useState(false);
   useEffect(() => {
     void registerOfflineSupport();
@@ -168,7 +183,9 @@ function OfflineBanner() {
   if (!offline) return null;
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 bg-foreground/90 py-1 text-center text-xs text-background">
-      You're offline — the game still works.
+      {ready
+        ? "You're offline — the game still works."
+        : "You're offline — reconnect once to finish offline preparation."}
     </div>
   );
 }

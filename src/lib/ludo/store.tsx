@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -27,6 +28,7 @@ import {
   updateStandings,
 } from "./engine";
 import { clearSave, loadGame, saveGame } from "./persistence";
+import { loadPreferences, preferencesOf, savePreferences } from "./local-preferences";
 import { guidanceEnabled, normalizeGuidance } from "./guidance";
 import { configureAudio, playSfx, setMusicEnabled, unlockAudio, vibrate } from "./audio";
 import type { Color, GameState, HouseRules, Mode, Token } from "./types";
@@ -256,6 +258,8 @@ export function gameReducer(state: GameState, action: Action): GameState {
   }
   if (action.type === "START") {
     const fresh = createGame(action.mode, action.houseRules, action.nicknames, action.colors);
+    const { soundOn, hapticsOn, musicOn } = preferencesOf(state.settings);
+    fresh.settings = { ...fresh.settings, soundOn, hapticsOn, musicOn };
     fresh.settings.showMoveSuggestions = action.showMoveSuggestions ?? false;
     fresh.settings = normalizeGuidance(fresh.settings);
     return fresh;
@@ -427,6 +431,7 @@ interface Ctx {
   state: GameState | null;
   dispatch: React.Dispatch<Action>;
   ready: boolean;
+  hasGame: boolean;
 }
 
 const GameContext = createContext<Ctx | null>(null);
@@ -438,21 +443,40 @@ const EMPTY = createGame(
 );
 
 export function GameProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(gameReducer, EMPTY);
+  const [state, reducerDispatch] = useReducer(gameReducer, EMPTY);
   const [ready, setReady] = useState(false);
+  const [hasGame, setHasGame] = useState(false);
+  const { soundOn, hapticsOn, musicOn } = state.settings;
+  const dispatch = useCallback((action: Action) => {
+    if (action.type === "RESET") {
+      setHasGame(false);
+      clearSave();
+      return;
+    }
+    if (action.type === "START" || action.type === "REMATCH") setHasGame(true);
+    reducerDispatch(action);
+  }, []);
 
   useEffect(() => {
     const saved = loadGame();
-    if (saved) dispatch({ type: "HYDRATE", state: saved });
+    const initial = saved ?? structuredClone(EMPTY);
+    const { soundOn, hapticsOn, musicOn } = loadPreferences(initial.settings);
+    initial.settings = { ...initial.settings, soundOn, hapticsOn, musicOn };
+    reducerDispatch({ type: "HYDRATE", state: initial });
+    setHasGame(Boolean(saved));
     setReady(true);
   }, []);
 
   // Persist only stable turns. Saving individual animation hops can restore a
   // partially moved token while losing the remainder of its pending move.
   useEffect(() => {
-    if (!ready || state.phase === "moving" || state.phase === "rolling") return;
+    if (!ready || !hasGame || state.phase === "moving" || state.phase === "rolling") return;
     saveGame(state);
-  }, [ready, state]);
+  }, [ready, hasGame, state]);
+
+  useEffect(() => {
+    if (ready) savePreferences({ soundOn, hapticsOn, musicOn: Boolean(musicOn) });
+  }, [ready, soundOn, hapticsOn, musicOn]);
 
   useEffect(() => {
     configureAudio(state.settings.soundOn, state.settings.hapticsOn);
@@ -489,9 +513,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
       reduced ? 30 : pending.finishStage === "settle" ? 180 : 200,
     );
     return () => window.clearTimeout(id);
-  }, [state.pending]);
+  }, [state.pending, dispatch]);
 
-  const value = useMemo(() => ({ state, dispatch, ready }), [ready, state]);
+  const value = useMemo(
+    () => ({ state, dispatch, ready, hasGame }),
+    [dispatch, ready, state, hasGame],
+  );
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 }
@@ -499,7 +526,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
 export function useGame() {
   const ctx = useContext(GameContext);
   if (!ctx) throw new Error("useGame must be used inside GameProvider");
-  return { state: ctx.state as GameState, dispatch: ctx.dispatch, ready: ctx.ready };
+  return {
+    state: ctx.state as GameState,
+    dispatch: ctx.dispatch,
+    ready: ctx.ready,
+    hasGame: ctx.hasGame,
+  };
 }
 
 export { clearSave, loadGame, playSfx, unlockAudio, vibrate, junctionOf };

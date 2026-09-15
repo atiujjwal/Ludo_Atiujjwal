@@ -24,6 +24,7 @@ With npm, use `npm install` and `npm run dev` instead.
 bun run test
 bunx tsc --noEmit
 bun run lint
+bun run test:pwa
 ```
 
 ## Production
@@ -41,11 +42,29 @@ The deployable application is written to `.output`. Its server entry point is `.
 
 ## Progressive Web App
 
-The application manifest, service worker, favicon, and home-screen icons are served from `public`. The generated icons use `public/logo.png` as their source artwork.
+The application manifest, service worker, favicon, and home-screen icons are served from `public`. The generated icons use `public/logo.jpeg` as their source artwork.
 
 `bun run build` also runs `scripts/build-offline.mjs` after Nitro finishes. It renders all five routes, hashes the browser assets and generated HTML, and writes the revisioned `.output/public/sw.js`. A small Nitro runtime plugin serves these post-build files with current metadata. Deploy the **entire** generated `.output`, not the source `public/sw.js` template.
 
-The home and install screens show “Preparing offline play” followed by “Ready to play offline”. Preparation is independent of browser installation and never blocks starting a game. All playable routes are cached, so first visits to setup, game, rules, and settings work offline once preparation completes. Interrupted updates preserve the working cache. A refresh is offered outside play, and activation is deferred while any game tab is open. Browsers can still evict offline data under storage pressure.
+The home and install screens show preparation progress followed by “Ready to play offline”. Readiness requires a complete cache, not merely an active worker. The worker downloads four files at a time, validates content hashes, and stores a completion marker only after every required file succeeds. All five routes, browser chunks, CSS, current JPEG branding, icons and teddy animations are included. System fonts and synthesized sounds need no external downloads; optional sample files are discovered at build time, so absent samples generate no requests.
+
+“Install on your phone” requests browser-managed persistent storage and starts/retries preparation. The final “Install now” action or iOS instructions appear after verification; Android prompting uses that fresh tap. Gameplay never waits for installation, cache completion, or an internet response. Install controls are hidden in standalone mode. Browsers can still deny persistent storage, evict data under pressure, or clear it at the user's request.
+
+Interrupted updates preserve the working revision. A refresh is offered outside play; the worker checks the actual current route in every open window rather than relying on potentially stale SPA URLs. Unknown/unresponsive older windows defer activation until they are closed or refreshed. Older clients retain their lazy-loaded bundles; obsolete revisions are pruned when safe. No update clears game or preference storage.
+
+Builds optimize only generated deployment copies of images and icons before precaching; source artwork and public URLs remain intact. JavaScript, CSS, offline HTML, SVG and the worker also receive Brotli/gzip variants, negotiated by the portable Node server without requiring a proxy. The Nitro plugin serves generated files with correct response metadata. Every precached HTTP response is checked against its expected decoded-content hash during the build.
+
+Game saves retain `ludo:save:v1` and the existing stable-state checkpoint/recovery behavior. Audio preferences and independent royal skin IDs use `ludo:preferences:v1`; app Light/Dark mode retains `ludo:app-theme:v1`. Starting or clearing a game keeps device preferences, while new setup suggestions still default OFF. House rules remain part of each saved game. A nonblocking warning appears if local storage cannot save progress or preferences.
+
+Production browser and mobile profiling checks (build first):
+
+```sh
+bunx playwright install chromium
+bun run test:pwa
+bun run test:performance
+```
+
+See [MOBILE_OFFLINE_VERIFICATION.md](./MOBILE_OFFLINE_VERIFICATION.md) for measurements, offline/update coverage, and the manual Android/iOS installation checklist. Browser automation does not certify actual phone installation, audible playback, or lower-end hardware performance.
 
 Service workers and browser installation prompts require a secure context in production. Serve the deployed app over HTTPS, except when testing on `localhost`. Add `?sw=off` to a URL to unregister this application's service worker while troubleshooting.
 

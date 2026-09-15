@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { webcrypto, createHash } from "node:crypto";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it, vi } from "vitest";
 
@@ -7,27 +8,39 @@ const routes = ["/", "/setup", "/game", "/rules", "/settings"];
 const navigation = Object.fromEntries(
   routes.map((route) => [route, "/offline/" + (route.slice(1) || "index") + ".html"]),
 );
-const assets = [...Object.values(navigation), "/assets/game-new.js", "/logo.png"];
+const assets = [...Object.values(navigation), "/assets/game-new.js", "/logo.jpeg"];
 
-function worker(options: { fail?: boolean; windows?: string[] } = {}) {
+function worker(
+  options: {
+    fail?: boolean;
+    quota?: boolean;
+    corrupt?: boolean;
+    offline?: boolean;
+    windows?: string[];
+  } = {},
+) {
   const stores = new Map<string, Map<string, Response>>();
   stores.set("ludo-shell-old", new Map([["/assets/game-old.js", new Response("old bundle")]]));
   const keyOf = (request: Request | string) =>
-    new URL(typeof request === "string" ? request : request.url, "https://ludo.test").pathname;
+    new URL(typeof request === "string" ? request : request.url, "https://ludo.test").pathname +
+    new URL(typeof request === "string" ? request : request.url, "https://ludo.test").search;
   const open = async (name: string) => {
     if (!stores.has(name)) stores.set(name, new Map());
     const store = stores.get(name)!;
     return {
-      addAll: async (requests: Request[]) => {
-        if (options.fail) throw new Error("download interrupted");
-        requests.forEach((request) => store.set(keyOf(request), new Response(keyOf(request))));
+      put: async (request: Request | string, response: Response) => {
+        if (options.quota) throw new Error("storage full");
+        store.set(keyOf(request), response.clone());
       },
       match: async (request: Request | string) => store.get(keyOf(request))?.clone(),
     };
   };
   const handlers = new Map<string, (event: Record<string, unknown>) => void>();
   const skipWaiting = vi.fn(async () => {});
-  const fetchMock = vi.fn(async () => new Response("network"));
+  const fetchMock = vi.fn(async (request: Request | string) => {
+    if (options.fail || options.offline) throw new Error("download interrupted");
+    return new Response(options.corrupt ? "bad payload" : keyOf(request));
+  });
   runInNewContext(
     template
       .replace("__BUILD_REVISION__", "new")
@@ -38,6 +51,16 @@ function worker(options: { fail?: boolean; windows?: string[] } = {}) {
       .replace(
         "const NAVIGATION = {}; // __NAVIGATION__",
         "const NAVIGATION = " + JSON.stringify(navigation) + ";",
+      )
+      .replace(
+        "const INTEGRITY = {}; // __INTEGRITY__",
+        "const INTEGRITY = " +
+          JSON.stringify(
+            Object.fromEntries(
+              assets.map((url) => [url, createHash("sha256").update(url).digest("hex")]),
+            ),
+          ) +
+          ";",
       ),
     {
       self: {
@@ -61,6 +84,10 @@ function worker(options: { fail?: boolean; windows?: string[] } = {}) {
             ?.clone(),
       },
       URL,
+      Response,
+      AbortSignal,
+      crypto: webcrypto,
+      Uint8Array,
       Request: class extends Request {
         constructor(url: string, init: RequestInit) {
           super(new URL(url, "https://ludo.test"), init);
@@ -93,7 +120,8 @@ describe("revisioned offline shell", () => {
   it("prepares every playable route and its browser assets before reporting installed", async () => {
     const w = worker();
     await w.send("install");
-    expect(w.stores.get("ludo-shell-new")?.size).toBe(assets.length);
+    expect(w.stores.get("ludo-shell-new")?.size).toBe(assets.length + 1);
+    w.fetchMock.mockClear();
     for (const route of routes)
       expect(await (await w.request(route))?.text()).toBe(navigation[route]);
     expect(w.fetchMock).not.toHaveBeenCalled();
@@ -109,6 +137,7 @@ describe("revisioned offline shell", () => {
     const w = worker();
     await w.send("install");
     await w.send("activate");
+    w.fetchMock.mockClear();
     expect(await (await w.request("/assets/game-old.js", "cors"))?.text()).toBe("old bundle");
     expect(w.fetchMock).not.toHaveBeenCalled();
   });
@@ -121,8 +150,47 @@ describe("revisioned offline shell", () => {
   });
   it("accepts an explicit refresh outside play", async () => {
     const w = worker({ windows: ["https://ludo.test/", "https://ludo.test/settings"] });
+    await w.send("install");
     await w.send("message", { data: { type: "ACTIVATE_UPDATE" } });
     expect(w.skipWaiting).toHaveBeenCalledOnce();
+  });
+  it("normalizes owned JPEG and bundle query strings without a network request", async () => {
+    const w = worker();
+    await w.send("install");
+    w.fetchMock.mockClear();
+    expect(await (await w.request("/logo.jpeg?v=2", "cors"))?.text()).toBe("/logo.jpeg");
+    expect(await (await w.request("/assets/game-new.js?cache=1", "cors"))?.text()).toBe(
+      "/assets/game-new.js",
+    );
+    expect(w.fetchMock).not.toHaveBeenCalled();
+  });
+  it.each([{ quota: true }, { corrupt: true }])(
+    "never promotes invalid or unstorable downloads: %j",
+    async (options) => {
+      const w = worker(options);
+      await expect(w.send("install")).rejects.toThrow();
+      expect(w.stores.has("ludo-shell-new")).toBe(false);
+      expect(w.stores.has("ludo-shell-old")).toBe(true);
+    },
+  );
+  it("reports missing cache entries rather than trusting the completion marker", async () => {
+    const w = worker();
+    await w.send("install");
+    w.stores.get("ludo-shell-new")!.delete("/logo.jpeg");
+    const postMessage = vi.fn();
+    await w.send("message", { data: { type: "CHECK_OFFLINE" }, source: { postMessage } });
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ ready: false, completed: assets.length - 1 }),
+    );
+    await w.send("message", { data: { type: "ACTIVATE_UPDATE" } });
+    expect(w.skipWaiting).not.toHaveBeenCalled();
+  });
+  it("keeps every previous revision while older windows remain open", async () => {
+    const w = worker({ windows: ["https://ludo.test/settings"] });
+    w.stores.set("ludo-shell-older", new Map());
+    await w.send("install");
+    await w.send("activate");
+    expect(w.stores.has("ludo-shell-older")).toBe(true);
   });
   it("bypasses sw=off, APIs and unknown routes instead of hiding real 404s", async () => {
     const w = worker();

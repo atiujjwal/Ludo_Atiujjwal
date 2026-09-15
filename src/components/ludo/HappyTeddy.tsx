@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { usePageVisible } from "@/lib/page-visibility";
 
 /** A brief victory flourish; never drives game state or keeps animating forever. */
 export function HappyTeddy() {
+  const visible = usePageVisible();
   const [loaded, setLoaded] = useState(false);
   const [animated, setAnimated] = useState(true);
   useEffect(() => {
@@ -12,7 +14,7 @@ export function HappyTeddy() {
     <picture className="royal-happy-teddy" aria-hidden="true">
       <source media="(prefers-reduced-motion: reduce)" srcSet="/happy_teddy-still.png" />
       <img
-        src={animated ? "/happy_teddy.gif" : "/happy_teddy-still.png"}
+        src={animated && visible ? "/happy_teddy.gif" : "/happy_teddy-still.png"}
         alt=""
         width="512"
         height="512"

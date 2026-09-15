@@ -10,6 +10,7 @@ import {
 import { createCaptureFeedback } from "@/lib/ludo/capture-feedback";
 import type { CaptureEvent, Color } from "@/lib/ludo/types";
 import { cellStyle } from "@/lib/ludo/board-style";
+import { usePageVisible } from "@/lib/page-visibility";
 
 /** Brief, CSS-only feedback; never owns a gameplay timer. */
 export function BoardEffects({
@@ -21,6 +22,7 @@ export function BoardEffects({
   celebrate?: { color: Color; id: number } | null;
   layout?: BoardLayout;
 }) {
+  const visible = usePageVisible();
   const [victims, setVictims] = useState<Partial<Record<Color, number>>>({});
   const [feedback] = useState(() =>
     createCaptureFeedback(
@@ -50,7 +52,7 @@ export function BoardEffects({
           <picture className="royal-crying-teddy">
             <source media="(prefers-reduced-motion: reduce)" srcSet="/crying_teddy-still.png" />
             <img
-              src="/crying_teddy.gif"
+              src={visible ? "/crying_teddy.gif" : "/crying_teddy-still.png"}
               alt=""
               width="512"
               height="512"

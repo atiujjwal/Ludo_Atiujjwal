@@ -2,6 +2,7 @@ import type { GameState } from "./types";
 import { normalizeGuidance } from "./guidance";
 import { normalizeHomePath } from "./home-path-migration";
 import { maxStepsOf } from "./board";
+import { reportStorageFailure } from "./local-preferences";
 
 const KEY = "ludo:save:v1";
 
@@ -15,7 +16,7 @@ export function saveGame(state: GameState): void {
     };
     window.localStorage.setItem(KEY, JSON.stringify(payload));
   } catch {
-    /* storage full or blocked — the game keeps running in memory */
+    reportStorageFailure();
   }
 }
 
@@ -62,6 +63,7 @@ export function loadGame(): GameState | null {
     if (state.phase === "rolling") state.phase = "idle";
     return state;
   } catch {
+    reportStorageFailure();
     try {
       window.localStorage.removeItem(KEY);
     } catch {
@@ -80,6 +82,6 @@ export function clearSave(): void {
   try {
     window.localStorage.removeItem(KEY);
   } catch {
-    /* ignore */
+    reportStorageFailure();
   }
 }

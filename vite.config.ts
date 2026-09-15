@@ -3,21 +3,24 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
+import { existsSync, readdirSync } from "node:fs";
 
 export default defineConfig({
+  define: {
+    __LUDO_AUDIO_FILES__: JSON.stringify(
+      existsSync("public/audio")
+        ? readdirSync("public/audio").filter(
+            (file) => /\.mp3$/i.test(file) && file !== "crying_audio.mp3",
+          )
+        : [],
+    ),
+  },
   css: {
     transformer: "lightningcss",
   },
   resolve: {
     tsconfigPaths: true,
-    dedupe: [
-      "react",
-      "react-dom",
-      "react/jsx-runtime",
-      "react/jsx-dev-runtime",
-      "@tanstack/react-query",
-      "@tanstack/query-core",
-    ],
+    dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
   },
   optimizeDeps: {
     ignoreOutdatedRequests: true,

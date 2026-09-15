@@ -15,7 +15,7 @@ describe("independent capture overlays", () => {
       new URL("../../components/ludo/BoardEffects.tsx", import.meta.url),
       "utf8",
     );
-    expect(component).toContain('src="/crying_teddy.gif"');
+    expect(component).toContain('visible ? "/crying_teddy.gif" : "/crying_teddy-still.png"');
     expect(component).toContain('srcSet="/crying_teddy-still.png"');
     expect(component).not.toContain("CryingAudio");
     const css = readFileSync(new URL("../../royal.css", import.meta.url), "utf8");
