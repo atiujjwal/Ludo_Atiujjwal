@@ -1,5 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
+const vercel = process.env["LUDO_TEST_TARGET"] === "vercel";
+
 export default defineConfig({
   testDir: "./tests/pwa",
   timeout: 60000,
@@ -14,7 +16,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "node .output/server/index.mjs",
+    command: vercel ? "node scripts/preview-vercel.mjs" : "node .output/server/index.mjs",
     url: "http://127.0.0.1:4319",
     env: { PORT: "4319", HOST: "127.0.0.1", NITRO_PORT: "4319", NITRO_HOST: "127.0.0.1" },
     reuseExistingServer: false,

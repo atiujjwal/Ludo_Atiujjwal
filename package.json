@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build && node scripts/optimize-assets.mjs && node scripts/build-offline.mjs",
+    "build:vercel": "node scripts/build-vercel.mjs",
     "build:dev": "vite build --mode development",
     "start": "node .output/server/index.mjs",
     "preview": "node .output/server/index.mjs",

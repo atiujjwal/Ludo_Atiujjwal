@@ -7,6 +7,9 @@ import { existsSync, readdirSync } from "node:fs";
 import sharp from "sharp";
 import { catAssets } from "./scripts/cat-assets.mjs";
 
+// The portable Node build remains the default; Vercel packaging is explicit.
+const vercelBuild = process.env["LUDO_BUILD_PRESET"] === "vercel";
+
 export default defineConfig({
   define: {
     __LUDO_AUDIO_FILES__: JSON.stringify(
@@ -66,7 +69,30 @@ export default defineConfig({
         },
       },
     }),
-    nitro({ preset: "node_server", plugins: ["./server/plugins/offline-assets.ts"] }),
+    nitro({
+      preset: vercelBuild ? "vercel" : "node_server",
+      // Vercel serves generated assets from its CDN, not the Node-only file wrapper.
+      plugins: vercelBuild ? [] : ["./server/plugins/offline-assets.ts"],
+      ...(vercelBuild
+        ? {
+            vercel: { functions: { runtime: "nodejs22.x" }, entryFormat: "web" as const },
+            routeRules: {
+              "/sw.js": {
+                headers: {
+                  "cache-control": "no-cache",
+                  "service-worker-allowed": "/",
+                },
+              },
+              "/manifest.webmanifest": { headers: { "cache-control": "no-cache" } },
+              "/offline/**": { headers: { "cache-control": "no-cache" } },
+              "/animation/**": { headers: { "cache-control": "no-cache" } },
+              "/icons/**": { headers: { "cache-control": "no-cache" } },
+              "/logo.jpeg": { headers: { "cache-control": "no-cache" } },
+              "/favicon.png": { headers: { "cache-control": "no-cache" } },
+            },
+          }
+        : {}),
+    }),
     react(),
   ],
 });

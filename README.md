@@ -40,6 +40,14 @@ The deployable application is written to `.output`. Its server entry point is `.
 
 `bun run preview` starts the same production server locally after a build.
 
+### Vercel
+
+The checked-in `vercel.json` overrides Vercel's Vite `dist` assumption. It runs `bun run build:vercel` and packages the app using Nitro's official `vercel` preset into `.vercel/output`, including Node 22 SSR Functions and CDN assets. No catch-all SPA rewrite is needed; real unknown routes remain 404s.
+
+The deployment build first generates and verifies the existing Node/PWA output, then packages the Vercel server. Browser bundle hashes must match before the optimized media, route snapshots and revisioned worker are copied into the Vercel static output. This keeps complete offline preparation and safe updates intact. The standard `bun run build` / `bun run start` workflow remains unchanged for other Node hosts.
+
+Commit these changes and redeploy. Remove any environment-specific Build Command override that still runs only `bun run build`; use `bun run build:vercel`. The Output Directory is `.vercel/output/static`, not `dist` or source `public`. Keep the project Root Directory at the repository root. Vercel uses `.vercel/output/config.json` to route SSR requests to the generated Function.
+
 ## Progressive Web App
 
 The application manifest, service worker, favicon, and home-screen icons are served from `public`. The generated icons use `public/logo.jpeg` as their source artwork.

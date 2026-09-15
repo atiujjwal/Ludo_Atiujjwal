@@ -6,6 +6,9 @@ import type { Mode } from "../../src/lib/ludo/types";
 import { COLOR_ORDER, START_OFFSET } from "../../src/lib/ludo/board";
 import { CAT_IDS, catUrl } from "../../src/lib/ludo/cat-effects";
 
+const publicOutput =
+  process.env["LUDO_TEST_TARGET"] === "vercel" ? ".vercel/output/static" : ".output/public";
+
 test("closing the entire browser preserves cold offline new-game and resume support", async () => {
   await mkdir(".artifacts", { recursive: true });
   const profile = await mkdtemp(".artifacts/offline-profile-");
@@ -493,12 +496,12 @@ test("failed update keeps the old cache and existing game; a complete update wai
   await prepared(page);
   await newGame(page);
   const saved = await page.evaluate(() => localStorage.getItem("ludo:save:v1"));
-  const original = await readFile(".output/public/sw.js", "utf8");
+  const original = await readFile(`${publicOutput}/sw.js`, "utf8");
   const writeWorker = async (body: string) =>
     Promise.all([
-      writeFile(".output/public/sw.js", body),
-      writeFile(".output/public/sw.js.br", brotliCompressSync(body)),
-      writeFile(".output/public/sw.js.gz", gzipSync(body)),
+      writeFile(`${publicOutput}/sw.js`, body),
+      writeFile(`${publicOutput}/sw.js.br`, brotliCompressSync(body)),
+      writeFile(`${publicOutput}/sw.js.gz`, gzipSync(body)),
     ]);
   try {
     const bad = original
