@@ -58,6 +58,13 @@ export function createCaptureFeedback(
       item.loaded = true;
       expire(color, CAT_DISPLAY_MS);
     },
+    cancel(color: Color) {
+      const item = active.get(color);
+      if (!item) return;
+      clearTimeout(item.timer);
+      active.delete(color);
+      effects.hide(color);
+    },
     dispose() {
       for (const [color, item] of active) {
         clearTimeout(item.timer);

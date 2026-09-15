@@ -6,8 +6,6 @@ import { tokensOf } from "@/lib/ludo/engine";
 import { PALETTE } from "@/lib/ludo/palette";
 import type { GameState, Player } from "@/lib/ludo/types";
 import { cn } from "@/lib/utils";
-import { CatMedia } from "./CatMedia";
-import type { RankCat } from "@/lib/ludo/cat-effects";
 
 interface Props {
   state: GameState;
@@ -19,8 +17,6 @@ interface Props {
   onRoll: () => void;
   /** Right-hand seat: keep its dice at the outer right edge. */
   flip?: boolean;
-  rankCat?: RankCat | undefined;
-  onCatLoaded?: (() => void) | undefined;
 }
 
 export function PlayerPanel({
@@ -32,8 +28,6 @@ export function PlayerPanel({
   canRoll,
   onRoll,
   flip = false,
-  rankCat,
-  onCatLoaded,
 }: Props) {
   const p = PALETTE[player.color];
   const home = tokensOf(state, player.color).filter((t) => t.state === "finished").length;
@@ -70,17 +64,22 @@ export function PlayerPanel({
             )}
           </p>
           <p className="truncate text-[0.68rem] font-semibold leading-tight text-muted-foreground">
-            {isTurn ? (
+            {player.finishRank ? (
+              `Finished #${player.finishRank}`
+            ) : isTurn ? (
               <span style={{ color: p.light }}>
                 {forTeammate ? "Playing partner's pieces" : "Your turn"}
               </span>
-            ) : player.finishRank ? (
-              `Finished #${player.finishRank}`
             ) : (
               `${home}/4 home`
             )}
             {player.teamId ? ` · Team ${player.teamId}` : ""}
           </p>
+          {player.finishRank && isTurn && state.phase !== "over" && (
+            <p className="text-[0.68rem] font-semibold leading-tight" style={{ color: p.light }}>
+              {forTeammate ? "Your turn · Playing partner's pieces" : "Your turn"}
+            </p>
+          )}
           <div className={cn("mt-1 flex items-center gap-0.5", flip && "justify-end")} aria-hidden>
             {[0, 1, 2, 3].map((i) => (
               <span
@@ -114,16 +113,6 @@ export function PlayerPanel({
           onRoll={onRoll}
         />
       </div>
-      {rankCat && (
-        <div className="royal-rank-cat-row">
-          <CatMedia
-            key={rankCat.session}
-            cat={rankCat.cat}
-            session={`rank-${rankCat.session}`}
-            onLoaded={onCatLoaded}
-          />
-        </div>
-      )}
     </div>
   );
 }

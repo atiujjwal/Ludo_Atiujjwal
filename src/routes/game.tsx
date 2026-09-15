@@ -183,11 +183,6 @@ function GameScreen() {
           canRoll={canRoll}
           onRoll={roll}
           flip={corner === "tr" || corner === "br"}
-          rankCat={rankFeedback.active[p.color]}
-          onCatLoaded={() => {
-            const entry = rankFeedback.active[p.color];
-            if (entry) rankFeedback.loaded(p.color, entry.session);
-          }}
         />
       </div>
     );
@@ -258,6 +253,8 @@ function GameScreen() {
             selectableTokenIds={selectable}
             activeColor={acting}
             celebrate={celebrate}
+            rankEffects={rankFeedback.active}
+            onRankLoaded={rankFeedback.loaded}
             onSelect={selectToken}
           />
         </div>
@@ -266,7 +263,7 @@ function GameScreen() {
         {seat("br", "order-5 lg:col-start-3 lg:row-start-2")}
       </div>
 
-      <GameModals state={state} dispatch={dispatch} animateResults={rankFeedback.animateResults} />
+      <GameModals state={state} dispatch={dispatch} showResults={rankFeedback.showResults} />
     </main>
   );
 }

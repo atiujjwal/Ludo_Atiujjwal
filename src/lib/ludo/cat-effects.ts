@@ -1,4 +1,4 @@
-import type { Color, GameState } from "./types";
+import type { Color, GameState, Token } from "./types";
 
 export const CAT_IDS = [
   "bleh-cat",
@@ -8,12 +8,13 @@ export const CAT_IDS = [
   "babsb-cat",
   "dancing-cat-ai",
   "happy-cat",
+  "weird-cute",
 ] as const;
 export type CatId = (typeof CAT_IDS)[number];
 /** Shared visible duration for each loaded capture stage and rank celebration. */
 export const CAT_DISPLAY_MS = 3000;
 export const catUrl = (cat: CatId, still = false) =>
-  `/animation/${cat}${still ? "-still.png" : ".gif"}`;
+  `/animation/${cat}${still ? "-still.png" : cat === "weird-cute" ? ".webp" : ".gif"}`;
 export const CAPTURE_CATS = {
   cutter: ["bleh-cat", "cat-orange-cat"],
   victim: ["banana-cat-crying", "crying-crying-cat"],
@@ -47,6 +48,8 @@ export function rankCats(state: GameState): Partial<Record<Color, CatId>> {
 export interface RankCat {
   cat: CatId;
   session: number;
+  animated?: boolean;
+  kind?: "home" | "rank";
 }
 let nextRankSession = 0;
 export function createRankFeedback(
@@ -71,9 +74,9 @@ export function createRankFeedback(
     }, delay);
   }
   return {
-    update(next: Partial<Record<Color, CatId>>) {
+    update(next: Partial<Record<Color, CatId>>, celebrateAll = false) {
       for (const [color, cat] of Object.entries(next) as [Color, CatId][]) {
-        if (previous[color] === cat) continue;
+        if (!celebrateAll && previous[color] === cat) continue;
         const old = active.get(color);
         if (old) clearTimeout(old.timer);
         const entry = { cat, session: ++nextRankSession };
@@ -89,12 +92,43 @@ export function createRankFeedback(
       item.loaded = true;
       expire(color, CAT_DISPLAY_MS);
     },
+    cancel(color: Color) {
+      const item = active.get(color);
+      if (!item) return;
+      clearTimeout(item.timer);
+      active.delete(color);
+      effects.hide(color);
+    },
     dispose() {
       for (const [color, item] of active) {
         clearTimeout(item.timer);
         effects.hide(color);
       }
       active.clear();
+    },
+  };
+}
+
+/** Newly settled first/second/third tokens only; saved finishes are seeded silently. */
+export function createTokenHomeFeedback(
+  initial: readonly Token[],
+  effects: Parameters<typeof createRankFeedback>[1],
+) {
+  let completed = new Set(
+    initial.filter((token) => token.state === "finished").map((token) => token.id),
+  );
+  const tracker = createRankFeedback({}, effects);
+  return {
+    ...tracker,
+    update(tokens: readonly Token[]) {
+      const finished = tokens.filter((token) => token.state === "finished");
+      for (const token of finished)
+        if (
+          !completed.has(token.id) &&
+          finished.filter((other) => other.color === token.color).length < 4
+        )
+          tracker.update({ [token.color]: "weird-cute" }, true);
+      completed = new Set(finished.map((token) => token.id));
     },
   };
 }

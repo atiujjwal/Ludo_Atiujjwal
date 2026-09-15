@@ -1,16 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync } from "node:fs";
 import { createCaptureFeedback } from "./capture-feedback";
-import { CAT_IDS } from "./cat-effects";
+import { CAT_IDS, catUrl } from "./cat-effects";
 import { COLOR_ORDER } from "./board";
 
 afterEach(() => vi.useRealTimers());
 describe("nonblocking capture cat sequences", () => {
   it("has every source GIF and no obsolete teddy source", () => {
     for (const cat of CAT_IDS)
-      expect(existsSync(new URL(`../../../public/animation/${cat}.gif`, import.meta.url))).toBe(
-        true,
-      );
+      expect(existsSync(new URL(`../../../public${catUrl(cat)}`, import.meta.url))).toBe(true);
     expect(existsSync(new URL("../../../public/crying_teddy.gif", import.meta.url))).toBe(false);
     expect(existsSync(new URL("../../../public/animation/happy_teddy.gif", import.meta.url))).toBe(
       false,
@@ -105,5 +103,20 @@ describe("nonblocking capture cat sequences", () => {
     vi.advanceTimersByTime(20000);
     expect(effects.show).toHaveBeenCalledTimes(2);
     expect(effects.hide).toHaveBeenCalledExactlyOnceWith("red");
+  });
+  it("cancels an obsolete house sequence when a rank celebration replaces it", () => {
+    vi.useFakeTimers();
+    const effects = { show: vi.fn(), hide: vi.fn() };
+    const feedback = createCaptureFeedback(undefined, effects);
+    feedback.update({ id: 1, square: 6, tokens: [{ id: "red-0", color: "red" }] });
+    feedback.loaded("red", 1, 0);
+    feedback.cancel("red");
+    feedback.cancel("red");
+    feedback.loaded("red", 1, 0);
+    vi.advanceTimersByTime(20000);
+    feedback.update({ id: 1, square: 6, tokens: [{ id: "red-0", color: "red" }] });
+    expect(effects.show).toHaveBeenCalledTimes(1);
+    expect(effects.hide).toHaveBeenCalledExactlyOnceWith("red");
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

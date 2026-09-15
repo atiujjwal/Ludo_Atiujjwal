@@ -6,6 +6,7 @@ const isGeneratedAsset = (pathname: string) =>
   pathname === "/sw.js" ||
   /^\/assets\/[^/]+\.(?:js|css|svg)$/.test(pathname) ||
   pathname === "/manifest.webmanifest" ||
+  /^\/animation\/weird-cute(?:\.webp|-still\.png)$/.test(pathname) ||
   /^\/offline\/(index|setup|game|rules|settings)-[a-f0-9]{16}\.html$/.test(pathname) ||
   /^\/(logo\.jpeg|favicon\.png|animation\/(?:bleh-cat|cat-orange-cat|banana-cat-crying|crying-crying-cat|babsb-cat|dancing-cat-ai|happy-cat)(?:-still\.png|\.gif)|icons\/(?:icon-192|icon-512|icon-maskable|apple-touch-icon)\.png)$/.test(
     pathname,
@@ -41,7 +42,9 @@ export default definePlugin((app) => {
                   ? "image/jpeg"
                   : pathname.endsWith(".gif")
                     ? "image/gif"
-                    : "image/png";
+                    : pathname.endsWith(".webp")
+                      ? "image/webp"
+                      : "image/png";
       const accepted = (request.headers.get("accept-encoding") ?? "")
         .split(",")
         .map((part) => {

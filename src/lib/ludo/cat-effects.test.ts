@@ -112,4 +112,25 @@ describe("rank cat identity and timing", () => {
     vi.advanceTimersByTime(10000);
     expect(effects.hide).toHaveBeenCalledExactlyOnceWith("red");
   });
+  it("celebrates all final houses once, replacing earlier rank timers without stale loads", () => {
+    vi.useFakeTimers();
+    const effects = { show: vi.fn(), hide: vi.fn() };
+    const feedback = createRankFeedback({ red: "babsb-cat" }, effects);
+    feedback.update({ red: "babsb-cat", green: "dancing-cat-ai" });
+    const old = effects.show.mock.calls[0]![1].session;
+    const final = { red: "babsb-cat", green: "dancing-cat-ai", blue: "crying-crying-cat" } as const;
+    feedback.update(final, true);
+    expect(effects.show).toHaveBeenCalledTimes(4);
+    feedback.loaded("green", old);
+    for (const [color, entry] of effects.show.mock.calls.slice(1))
+      feedback.loaded(color, entry.session);
+    feedback.update(final);
+    expect(effects.show).toHaveBeenCalledTimes(4);
+    vi.advanceTimersByTime(2999);
+    expect(effects.hide).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(effects.hide).toHaveBeenCalledTimes(3);
+    feedback.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

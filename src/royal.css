@@ -312,16 +312,6 @@ a:focus-visible {
   width: 26%;
   height: 26%;
 }
-.royal-rank-cat-row {
-  height: 48px;
-  display: flex;
-  justify-content: center;
-  margin-top: 4px;
-  pointer-events: none;
-}
-.royal-result-cat {
-  flex-shrink: 0;
-}
 @keyframes royal-cat-enter {
   0% {
     opacity: 0;

@@ -2,8 +2,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { Crown } from "lucide-react";
 
 import { Token } from "@/components/ludo/Token";
-import { ResultCat } from "@/components/ludo/CatMedia";
-import { rankCats } from "@/lib/ludo/cat-effects";
 import { COLOR_ORDER } from "@/lib/ludo/board";
 import { PALETTE } from "@/lib/ludo/palette";
 
@@ -34,10 +32,10 @@ function Sheet({ title, children }: { title: string; children: React.ReactNode }
 interface Props {
   state: GameState;
   dispatch: React.Dispatch<Action>;
-  animateResults?: boolean;
+  showResults?: boolean;
 }
 
-export function GameModals({ state, dispatch, animateResults = false }: Props) {
+export function GameModals({ state, dispatch, showResults = true }: Props) {
   const navigate = useNavigate();
 
   if (state.activeModal === "SECOND_LAP_CHOICE") {
@@ -154,7 +152,7 @@ export function GameModals({ state, dispatch, animateResults = false }: Props) {
   }
 
   if (state.activeModal === "GAME_OVER") {
-    const cats = rankCats(state);
+    if (!showResults) return null;
     const ranked = [...state.players].sort((a, b) => (a.finishRank ?? 99) - (b.finishRank ?? 99));
     const teamWin = state.winnerTeam
       ? state.players.filter((p) => p.teamId === state.winnerTeam)
@@ -217,14 +215,6 @@ export function GameModals({ state, dispatch, animateResults = false }: Props) {
                   {pl.nickname}
                 </span>
               </span>
-              {cats[pl.color] && (
-                <ResultCat
-                  key={`${pl.id}-${animateResults}`}
-                  cat={cats[pl.color]!}
-                  animate={animateResults}
-                  session={`results-${state.createdAt}-${pl.id}`}
-                />
-              )}
               <span className="shrink-0 text-muted-foreground">
                 {tokensOf(state, pl.color).filter((t) => t.state === "finished").length}/4 home
               </span>

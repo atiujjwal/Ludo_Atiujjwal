@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { CAT_DISPLAY_MS, catUrl, type CatId } from "@/lib/ludo/cat-effects";
+import { useRef, useState } from "react";
+import { catUrl, type CatId } from "@/lib/ludo/cat-effects";
 import { usePageVisible } from "@/lib/page-visibility";
 
 export function CatMedia({
@@ -39,34 +39,5 @@ export function CatMedia({
         }}
       />
     </picture>
-  );
-}
-
-/** Resumed completed games show static artwork without replay. */
-export function ResultCat({
-  cat,
-  animate,
-  session,
-}: {
-  cat: CatId;
-  animate: boolean;
-  session: string;
-}) {
-  const [shown, setShown] = useState(true);
-  const [loaded, setLoaded] = useState(false);
-  useEffect(() => {
-    if (!animate) return;
-    const timer = window.setTimeout(() => setShown(false), loaded ? CAT_DISPLAY_MS : 10000);
-    return () => window.clearTimeout(timer);
-  }, [animate, loaded]);
-  if (!shown) return null;
-  return (
-    <CatMedia
-      cat={cat}
-      session={session}
-      animated={animate}
-      onLoaded={() => setLoaded(true)}
-      className="royal-result-cat"
-    />
   );
 }

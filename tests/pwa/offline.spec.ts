@@ -134,17 +134,105 @@ test("capture sequences for every colour and ranked results work offline", async
   won.activeModal = "GAME_OVER";
   await page.evaluate((won) => localStorage.setItem("ludo:save:v1", JSON.stringify(won)), won);
   await page.goto("/game");
-  await expect(page.locator('[data-result-color="red"] [data-cat="babsb-cat"]')).toBeVisible();
   await expect(
-    page.locator('[data-result-color="green"] [data-cat="crying-crying-cat"]'),
+    page.locator('.royal-cat-yard[data-color="red"] [data-cat="babsb-cat"]'),
+  ).toBeVisible();
+  await expect(
+    page.locator('.royal-cat-yard[data-color="green"] [data-cat="crying-crying-cat"]'),
   ).toBeVisible();
   await page.emulateMedia({ reducedMotion: "reduce" });
   expect(
     await page
-      .locator('[data-result-color="red"] .royal-cat-media img')
+      .locator('.royal-cat-yard[data-color="red"] .royal-cat-media img')
       .evaluate((img: HTMLImageElement) => img.currentSrc),
   ).toContain("babsb-cat-still.png");
+  await expect(
+    page.locator('.royal-player-panel [data-cat], [role="dialog"] [data-cat]'),
+  ).toHaveCount(0);
   expect(sampleRequests).toEqual([]);
+});
+
+test("non-final home arrivals show weird-cute only in the correct house offline", async ({
+  page,
+  context,
+}) => {
+  await prepared(page);
+  await context.setOffline(true);
+  for (const [index, color] of COLOR_ORDER.entries()) {
+    const state = createGame("4P", DEFAULT_HOUSE_RULES, {});
+    const count = index % 3;
+    const own = state.tokens.filter((token) => token.color === color);
+    for (const token of own.slice(0, count)) Object.assign(token, { state: "finished", steps: 56 });
+    Object.assign(own[count]!, { state: "home_stretch", steps: 55 });
+    if (color === "blue") {
+      Object.assign(own[1]!, { state: "common", steps: 0 });
+      Object.assign(
+        state.tokens.find((token) => token.color === "red")!,
+        {
+          state: "common",
+          steps: (START_OFFSET.blue + 1 - START_OFFSET.red + 52) % 52,
+        },
+      );
+    }
+    state.turn.currentPlayerId = state.players.find((player) => player.color === color)!.id;
+    await page.evaluate(
+      (state) => localStorage.setItem("ludo:save:v1", JSON.stringify(state)),
+      state,
+    );
+    await page.goto("/game");
+    await page.emulateMedia({ reducedMotion: index === 0 ? "reduce" : "no-preference" });
+    await expect(page.locator('[data-cat="weird-cute"]')).toHaveCount(0);
+    await page.evaluate(() =>
+      Object.defineProperty(crypto, "getRandomValues", {
+        configurable: true,
+        value: (buffer: Uint8Array) => {
+          buffer.fill(0);
+          return buffer;
+        },
+      }),
+    );
+    await page.getByRole("button", { name: /Tap to roll/ }).click();
+    if (color === "blue")
+      await page.getByRole("button", { name: /^blue piece 1.*can move$/ }).click();
+    const effect = page.locator(
+      `.royal-cat-yard[data-color="${color}"][data-role="home"] [data-cat="weird-cute"]`,
+    );
+    await expect(effect).toBeVisible();
+    await expect
+      .poll(() =>
+        effect
+          .locator("img")
+          .evaluateAll((images) =>
+            images.some(
+              (image) =>
+                (image as HTMLImageElement).complete &&
+                (image as HTMLImageElement).naturalWidth > 0,
+            ),
+          ),
+      )
+      .toBe(true);
+    expect(
+      await effect.locator("img").evaluate((image: HTMLImageElement) => image.currentSrc),
+    ).toContain(index === 0 ? "weird-cute-still.png" : "weird-cute.webp");
+    await expect(page.getByRole("button", { name: /Tap to roll/ })).toBeEnabled();
+    await expect(
+      page.locator('.royal-player-panel [data-cat], [role="dialog"] [data-cat]'),
+    ).toHaveCount(0);
+    if (index === 1) await page.screenshot({ path: "test-results/non-final-home.png" });
+    if (color === "blue") {
+      // An earned roll can cut immediately: the newer event replaces the home cat.
+      await page.getByRole("button", { name: /Tap to roll/ }).click();
+      await expect(
+        page.locator('.royal-cat-yard[data-color="blue"] [data-cat="bleh-cat"]'),
+      ).toBeVisible();
+      await expect(
+        page.locator('.royal-cat-yard[data-color="red"] [data-cat="banana-cat-crying"]'),
+      ).toBeVisible();
+    }
+    await expect(effect).toHaveCount(0, { timeout: 8000 });
+    await page.reload();
+    await expect(page.locator('[data-cat="weird-cute"]')).toHaveCount(0);
+  }
 });
 
 for (const mode of ["2P", "3P", "4P"] as Mode[]) {
@@ -174,13 +262,17 @@ for (const mode of ["2P", "3P", "4P"] as Mode[]) {
       }),
     );
     await page.getByRole("button", { name: /Tap to roll/ }).click();
-    const cat = page.locator(
-      `.royal-player-panel[data-player-color="${color}"] [data-cat="babsb-cat"]`,
+    const card = page.locator(`.royal-player-panel[data-player-color="${color}"]`);
+    const houseCat = page.locator(
+      `.royal-cat-yard[data-color="${color}"][data-role="rank"] [data-cat="babsb-cat"]`,
     );
-    await expect(cat).toBeAttached();
+    await expect(houseCat).toBeVisible();
+    await expect(page.locator('[data-cat="weird-cute"]')).toHaveCount(0);
+    await expect(card.getByText("Finished #1", { exact: true })).toBeVisible();
+    await expect(card.locator("[data-cat]")).toHaveCount(0);
     await expect
       .poll(() =>
-        cat
+        houseCat
           .locator("img")
           .evaluateAll((images) =>
             images.some(
@@ -197,18 +289,22 @@ for (const mode of ["2P", "3P", "4P"] as Mode[]) {
       ).toBe("idle");
       await page.screenshot({ path: `test-results/cat-${mode}-live.png` });
     } else {
-      await expect(page.locator(".royal-result-cat")).toHaveCount(2);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(page.locator('.royal-cat-yard[data-role="rank"]')).toHaveCount(2);
     }
-    await expect(cat).toHaveCount(0, { timeout: 8000 });
-    if (mode === "2P")
-      await expect(page.locator(".royal-result-cat")).toHaveCount(0, { timeout: 8000 });
+    await expect(houseCat).toHaveCount(0, { timeout: 8000 });
+    if (mode === "2P") await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.locator('[role="dialog"] [data-cat]')).toHaveCount(0);
     await page.reload();
     await expect(page.locator(".royal-rank-cat-row")).toHaveCount(0);
+    await expect(page.locator('.royal-cat-yard[data-role="rank"]')).toHaveCount(
+      mode === "2P" ? 2 : 0,
+    );
   });
 }
 
 for (const team of ["A", "B"] as const) {
-  test(`team ${team} gets cats on both winning cards and both losing result cards offline`, async ({
+  test(`team ${team} gets cats in both winning houses and both losing houses offline`, async ({
     page,
     context,
   }) => {
@@ -239,14 +335,22 @@ for (const team of ["A", "B"] as const) {
       }),
     );
     await page.getByRole("button", { name: /Tap to roll/ }).click();
-    await expect(page.locator(".royal-result-cat")).toHaveCount(4);
-    await expect(page.locator('.royal-rank-cat-row [data-cat="babsb-cat"]')).toHaveCount(2);
-    await expect(page.locator('.royal-rank-cat-row [data-cat="crying-crying-cat"]')).toHaveCount(2);
+    await expect(
+      page.locator('.royal-cat-yard[data-role="rank"] [data-cat="babsb-cat"]'),
+    ).toHaveCount(2);
+    await expect(
+      page.locator('.royal-cat-yard[data-role="rank"] [data-cat="crying-crying-cat"]'),
+    ).toHaveCount(2);
+    await expect(page.locator('.royal-cat-yard[data-role="rank"]')).toHaveCount(4);
     await page.screenshot({ path: `test-results/cat-team-${team}-results.png` });
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(
+      page.locator('.royal-player-panel [data-cat], [role="dialog"] [data-cat]'),
+    ).toHaveCount(0);
   });
 }
 
-test("four-player resumed standings show all four correct static rank cats", async ({
+test("four-player resumed standings show all four correct static rank cats only in houses", async ({
   page,
   context,
 }) => {
@@ -263,19 +367,22 @@ test("four-player resumed standings show all four correct static rank cats", asy
     state,
   );
   await page.goto("/game");
-  await expect(page.locator(".royal-result-cat")).toHaveCount(4);
+  await expect(page.locator('.royal-cat-yard[data-role="rank"]')).toHaveCount(4);
   for (const [index, cat] of [
     "babsb-cat",
     "dancing-cat-ai",
     "happy-cat",
     "crying-crying-cat",
   ].entries()) {
-    const row = page.locator(`[data-result-color="${state.players[index]!.color}"]`);
+    const row = page.locator(`.royal-cat-yard[data-color="${state.players[index]!.color}"]`);
     await expect(row.locator(`[data-cat="${cat}"]`)).toBeVisible();
     expect(await row.locator("img").evaluate((img: HTMLImageElement) => img.currentSrc)).toContain(
       `${cat}-still.png`,
     );
   }
+  await expect(
+    page.locator('.royal-player-panel [data-cat], [role="dialog"] [data-cat]'),
+  ).toHaveCount(0);
   await page.screenshot({ path: "test-results/cat-four-ranks.png" });
 });
 

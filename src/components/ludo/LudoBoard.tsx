@@ -19,6 +19,7 @@ import { blockades, getLegalMoves } from "@/lib/ludo/engine";
 import { destinations, positionTokens } from "@/lib/ludo/presentation";
 import { APPEARANCE, type BoardTheme, type TokenSkin } from "@/lib/ludo/theme";
 import type { Color, GameState } from "@/lib/ludo/types";
+import type { RankCat } from "@/lib/ludo/cat-effects";
 
 interface Props {
   state: GameState;
@@ -26,6 +27,8 @@ interface Props {
   activeColor: Color;
   onSelect: (tokenId: string) => void;
   celebrate?: { color: Color; id: number } | null;
+  rankEffects?: Partial<Record<Color, RankCat>> | undefined;
+  onRankLoaded?: ((color: Color, session: number) => void) | undefined;
   theme?: BoardTheme;
   tokenSkin?: TokenSkin;
 }
@@ -38,6 +41,8 @@ export const MemoizedLudoBoard = memo(
     a.activeColor === b.activeColor &&
     a.onSelect === b.onSelect &&
     a.celebrate === b.celebrate &&
+    a.rankEffects === b.rankEffects &&
+    a.onRankLoaded === b.onRankLoaded &&
     a.theme === b.theme &&
     a.tokenSkin === b.tokenSkin,
 );
@@ -47,6 +52,8 @@ export function LudoBoard({
   activeColor,
   onSelect,
   celebrate,
+  rankEffects,
+  onRankLoaded,
   theme = APPEARANCE.board,
   tokenSkin = APPEARANCE.token,
 }: Props) {
@@ -155,6 +162,8 @@ export function LudoBoard({
             layout={layout}
             capture={state.lastCapture ?? null}
             celebrate={celebrate ?? null}
+            rankEffects={rankEffects}
+            onRankLoaded={onRankLoaded}
           />
         </div>
       </div>

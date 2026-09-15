@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { readFile, writeFile } from "node:fs/promises";
-import { catAssets } from "./cat-assets.mjs";
+import { catAssets, catSourceFile } from "./cat-assets.mjs";
 
 // Only generated deployment copies are modified; source artwork stays untouched.
 const targets = [
@@ -10,7 +10,7 @@ const targets = [
   "icons/icon-512.png",
   "icons/icon-maskable.png",
   "icons/apple-touch-icon.png",
-  ...catAssets.map((cat) => `animation/${cat}.gif`),
+  ...catAssets.map((cat) => `animation/${catSourceFile(cat)}`),
 ];
 let before = 0;
 let after = 0;
@@ -20,12 +20,12 @@ for (const file of targets) {
   const animated = file.endsWith(".gif");
   const image = sharp(input, { animated });
   const metadata = await image.metadata();
-  if (animated) {
+  if (animated || file.endsWith(".webp")) {
     const still = await sharp(input, { animated: false })
       .resize({ width: 160, withoutEnlargement: true })
       .png({ compressionLevel: 9, palette: true, quality: 95, effort: 8 })
       .toBuffer();
-    await writeFile(path.replace(/\.gif$/, "-still.png"), still);
+    await writeFile(path.replace(/\.(gif|webp)$/, "-still.png"), still);
     after += still.length;
   }
   let optimized;
@@ -35,6 +35,9 @@ for (const file of targets) {
       .resize({ width: 384, withoutEnlargement: true })
       .jpeg({ quality: 86, mozjpeg: true })
       .toBuffer();
+  else if (file.endsWith(".webp"))
+    // The supplied 114 KiB WebP is already small; preserve every original frame.
+    optimized = input;
   else if (animated)
     optimized = await image
       .resize({ width: 160, withoutEnlargement: true })

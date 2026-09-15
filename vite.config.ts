@@ -5,7 +5,7 @@ import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
 import { existsSync, readdirSync } from "node:fs";
 import sharp from "sharp";
-import { catAssets } from "./scripts/cat-assets.mjs";
+import { catAssets, catSourceFile } from "./scripts/cat-assets.mjs";
 
 // The portable Node build remains the default; Vercel packaging is explicit.
 const vercelBuild = process.env["LUDO_BUILD_PRESET"] === "vercel";
@@ -43,7 +43,7 @@ export default defineConfig({
           try {
             let frame = frames.get(name);
             if (!frame) {
-              frame = sharp(`public/animation/${name}.gif`)
+              frame = sharp(`public/animation/${catSourceFile(name)}`)
                 .resize({ width: 160, withoutEnlargement: true })
                 .png()
                 .toBuffer();
