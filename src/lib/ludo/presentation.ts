@@ -16,11 +16,18 @@ export interface Destination {
 }
 
 /** Visual previews use the same legality and coordinate functions as play. */
-export function destinations(state: GameState): Destination[] {
+export function destinations(
+  state: GameState,
+  legalMoves = getLegalMoves(
+    state,
+    state.rewardMove ? 6 : (state.turn.diceValue ?? 0),
+    state.rewardMove,
+  ),
+): Destination[] {
   if (state.phase !== "select" || state.activeModal !== "NONE") return [];
   const dice = state.rewardMove ? 6 : (state.turn.diceValue ?? 0);
   const layout = boardLayoutOf(state.gameConfig);
-  return getLegalMoves(state, dice, state.rewardMove).flatMap((move) => {
+  return legalMoves.flatMap((move) => {
     const token = state.tokens.find((t) => t.id === move.tokenId)!;
     const landed: Token = {
       ...token,

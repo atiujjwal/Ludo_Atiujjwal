@@ -177,9 +177,9 @@ describe("full-size overlapping stacks", () => {
     const css = readFileSync(new URL("../../royal.css", import.meta.url), "utf8");
     expect(css.match(/\.royal-piece-position\s*\{([^}]+)\}/)![1]).not.toContain("transition:");
     expect(css.match(/\.royal-piece-hit\s*\{([^}]+)\}/)![1]).not.toContain("transition:");
-    expect(css.match(/\.royal-piece-position\[data-moving="true"\]\s*\{([^}]+)\}/)![1]).toContain(
-      "transition: transform 120ms linear",
-    );
+    const moving = css.match(/\.royal-piece-position\[data-moving="true"\]\s*\{([^}]+)\}/)![1];
+    expect(moving).toContain("will-change: transform");
+    expect(moving).not.toContain("transition:");
     expect(css).toMatch(/\.royal-piece-hit \*\s*\{\s*pointer-events: none/);
     expect(css.match(/\.royal-stack-outline\s*\{([^}]+)\}/)![1]).toContain("pointer-events: none");
   });

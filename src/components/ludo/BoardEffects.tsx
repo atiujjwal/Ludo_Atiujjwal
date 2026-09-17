@@ -19,12 +19,14 @@ export function BoardEffects({
   celebrate,
   rankEffects,
   onRankLoaded,
+  matchId = 0,
   layout = DEFAULT_BOARD_LAYOUT,
 }: {
   capture?: CaptureEvent | null;
   celebrate?: { color: Color; id: number } | null;
   rankEffects?: Partial<Record<Color, RankCat>> | undefined;
   onRankLoaded?: ((color: Color, session: number) => void) | undefined;
+  matchId?: number;
   layout?: BoardLayout;
 }) {
   const [cats, setCats] = useState<Partial<Record<Color, CaptureCat>>>({});
@@ -61,6 +63,7 @@ export function BoardEffects({
             session={`capture-${color}-${entry.id}-${entry.stage}`}
             className="royal-house-cat"
             onLoaded={() => feedback.loaded(color, entry.id, entry.stage)}
+            matchId={matchId}
           />
         </div>
       ))}
@@ -78,6 +81,7 @@ export function BoardEffects({
             animated={entry.animated !== false}
             className="royal-house-cat"
             onLoaded={() => onRankLoaded?.(color, entry.session)}
+            matchId={matchId}
           />
         </div>
       ))}

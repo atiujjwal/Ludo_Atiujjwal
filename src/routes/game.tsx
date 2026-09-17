@@ -5,13 +5,14 @@ import { toast } from "sonner";
 
 import { MemoizedLudoBoard as LudoBoard } from "@/components/ludo/LudoBoard";
 import { GameModals } from "@/components/ludo/Modals";
+import { CutRewardPanel } from "@/components/ludo/CutRewardPanel";
 import { PlayerPanel } from "@/components/ludo/PlayerPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { controllingColor, playerById, playerAtCorner } from "@/lib/ludo/engine";
 import { PALETTE } from "@/lib/ludo/palette";
 import { useGame } from "@/lib/ludo/store";
-import { playSfx, unlockAudio, vibrate } from "@/lib/ludo/audio";
+import { configureAudio, playSfx, unlockAudio, vibrate } from "@/lib/ludo/audio";
 import {
   createGuidanceNotices,
   GAME_GUIDANCE_TOAST_ID,
@@ -20,6 +21,8 @@ import {
 import { type Corner } from "@/lib/ludo/board";
 import type { Color } from "@/lib/ludo/types";
 import { useRankFeedback } from "@/lib/ludo/rank-feedback";
+import { CAPTURE_CATS, warmCatImages } from "@/lib/ludo/cat-effects";
+import { offlineDetailsSnapshot } from "@/lib/ludo/register-sw";
 
 export const Route = createFileRoute("/game")({
   head: () => ({
@@ -46,6 +49,11 @@ function GameScreen() {
   const { state, dispatch, ready: gameReady, hasGame } = useGame();
   const navigate = useNavigate();
   const [rolling, setRolling] = useState(false);
+  const rollingRef = useRef(false);
+  const rollTimer = useRef<number | undefined>(undefined);
+  const canRoll = state.phase === "idle" && state.activeModal === "NONE" && !rolling;
+  const canRollRef = useRef(canRoll);
+  canRollRef.current = canRoll;
   const guidance = guidanceEnabled(state.settings);
   const rankFeedback = useRankFeedback(state, gameReady);
   const [notices] = useState(() =>
@@ -61,12 +69,28 @@ function GameScreen() {
   const celebrationTimer = useRef<number | undefined>(undefined);
   const selectToken = useCallback(
     (tokenId: string) => {
+      const piece = document.querySelector<HTMLElement>(`[data-token-id="${CSS.escape(tokenId)}"]`);
+      if (piece) piece.dataset["moving"] = "true";
       playSfx("uiTap");
       vibrate(10);
       dispatch({ type: "SELECT_TOKEN", tokenId });
     },
     [dispatch],
   );
+  const roll = useCallback(() => {
+    if (!canRollRef.current || rollingRef.current) return;
+    rollingRef.current = true;
+    unlockAudio();
+    playSfx("diceRoll");
+    vibrate(20);
+    setRolling(true);
+    rollTimer.current = window.setTimeout(() => {
+      rollingRef.current = false;
+      setRolling(false);
+      playSfx("diceLand");
+      dispatch({ type: "ROLL" });
+    }, 620);
+  }, [dispatch]);
 
   useEffect(() => {
     setReady(true);
@@ -78,6 +102,18 @@ function GameScreen() {
   }, [notices, state.messageId, state.message, guidance]);
 
   useEffect(() => () => notices.dispose(), [notices]);
+
+  useEffect(() => {
+    if (!gameReady || !offlineDetailsSnapshot().ready) return;
+    let dispose = () => {};
+    const timer = window.setTimeout(() => {
+      dispose = warmCatImages([...CAPTURE_CATS.cutter, ...CAPTURE_CATS.victim]);
+    }, 3000);
+    return () => {
+      window.clearTimeout(timer);
+      dispose();
+    };
+  }, [gameReady, state.createdAt]);
 
   // Local celebration whenever a piece reaches the goal.
   useEffect(() => {
@@ -97,7 +133,14 @@ function GameScreen() {
       celebrationTimer.current = window.setTimeout(() => setCelebrate(null), 1000);
     }
   }, [state.tokens, gameReady]);
-  useEffect(() => () => window.clearTimeout(celebrationTimer.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(celebrationTimer.current);
+      window.clearTimeout(rollTimer.current);
+      rollingRef.current = false;
+    },
+    [],
+  );
 
   // Capture feedback — thud plus a buzz when pieces get sent home.
   const lastCaptureId = useRef<number | undefined>(undefined);
@@ -139,21 +182,6 @@ function GameScreen() {
   const player = playerById(state, state.turn.currentPlayerId);
   const acting = controllingColor(state);
   const selectable = state.phase === "select" ? state.legalMoves.map((m) => m.tokenId) : [];
-  const canRoll = state.phase === "idle" && state.activeModal === "NONE" && !rolling;
-
-  const roll = () => {
-    if (!canRoll) return;
-    unlockAudio();
-    playSfx("diceRoll");
-    vibrate(20);
-    setRolling(true);
-    window.setTimeout(() => {
-      setRolling(false);
-      playSfx("diceLand");
-      dispatch({ type: "ROLL" });
-    }, 620);
-  };
-
   // Each player sits at the corner their colour owns on the board, so their
   // dice is always beside their own yard.
   const seatAt = (corner: Corner) => playerAtCorner(state, corner);
@@ -196,6 +224,8 @@ function GameScreen() {
           size="icon"
           className="min-h-11 min-w-11"
           aria-label="Leave game"
+          disabled={state.activeModal === "CUT_REWARD"}
+          title={state.activeModal === "CUT_REWARD" ? "Choose your cut bonus first" : undefined}
           onClick={() => dispatch({ type: "SET_MODAL", modal: "EXIT_CONFIRM" })}
         >
           <LogOut className="h-5 w-5" />
@@ -231,7 +261,15 @@ function GameScreen() {
             size="icon"
             className="min-h-11 min-w-11"
             aria-label={state.settings.soundOn ? "Mute sound" : "Unmute sound"}
-            onClick={() => dispatch({ type: "TOGGLE_SETTING", key: "soundOn" })}
+            onClick={() => {
+              const on = !state.settings.soundOn;
+              configureAudio(on, state.settings.hapticsOn);
+              if (on) {
+                unlockAudio();
+                playSfx("uiTap");
+              }
+              dispatch({ type: "TOGGLE_SETTING", key: "soundOn" });
+            }}
           >
             {state.settings.soundOn ? (
               <Volume2 className="h-5 w-5" />
@@ -261,6 +299,7 @@ function GameScreen() {
 
         {seat("bl", "order-4 lg:col-start-1 lg:row-start-2")}
         {seat("br", "order-5 lg:col-start-3 lg:row-start-2")}
+        {state.activeModal === "CUT_REWARD" && <CutRewardPanel state={state} dispatch={dispatch} />}
       </div>
 
       <GameModals state={state} dispatch={dispatch} showResults={rankFeedback.showResults} />

@@ -5,7 +5,7 @@ import { Token } from "@/components/ludo/Token";
 import { COLOR_ORDER } from "@/lib/ludo/board";
 import { PALETTE } from "@/lib/ludo/palette";
 
-import { canContinueSecondLap, controllingColor, getLegalMoves, tokensOf } from "@/lib/ludo/engine";
+import { canContinueSecondLap, getLegalMoves, tokensOf } from "@/lib/ludo/engine";
 import type { Action } from "@/lib/ludo/store";
 import { playSfx } from "@/lib/ludo/audio";
 import type { GameState } from "@/lib/ludo/types";
@@ -75,51 +75,6 @@ export function GameModals({ state, dispatch, showResults = true }: Props) {
           }}
         >
           Continue lap
-        </Button>
-      </Sheet>
-    );
-  }
-
-  if (state.activeModal === "CUT_REWARD") {
-    const color = controllingColor(state);
-    const hasBaseToken = getLegalMoves(state, 6).some((move) => move.kind === "release");
-    const canMoveSix = getLegalMoves(state, 6, true).length > 0;
-    return (
-      <Sheet title="Nice cut! Pick your bonus">
-        <p className="text-sm text-muted-foreground">
-          Your next roll is already earned. Bring out a token or jump one 6 spaces first, or choose
-          Roll again to take that roll now.
-        </p>
-        <Button
-          className="h-12 w-full"
-          disabled={!hasBaseToken}
-          onClick={() => {
-            playSfx("tokenRelease");
-            dispatch({ type: "CUT_RELEASE" });
-          }}
-        >
-          Bring out a token
-        </Button>
-        <Button
-          variant="secondary"
-          className="h-12 w-full"
-          disabled={!canMoveSix}
-          onClick={() => {
-            playSfx("modalClose");
-            dispatch({ type: "CUT_MOVE6" });
-          }}
-        >
-          Jump a token 6 spaces
-        </Button>
-        <Button
-          variant="secondary"
-          className="h-12 w-full"
-          onClick={() => {
-            playSfx("modalClose");
-            dispatch({ type: "CUT_EXTRA_ROLL" });
-          }}
-        >
-          Roll again
         </Button>
       </Sheet>
     );

@@ -68,7 +68,10 @@ export function LudoBoard({
   );
   const selectable = new Set(moves.map((m) => m.tokenId));
   const guidance = guidanceEnabled(state.settings);
-  const previews = useMemo(() => (guidance ? destinations(state) : []), [state, guidance]);
+  const previews = useMemo(
+    () => (guidance ? destinations(state, moves) : []),
+    [state, guidance, moves],
+  );
   const positioned = useMemo(
     () => positionTokens(state.tokens, state.pending, layout),
     [state.tokens, state.pending, layout],
@@ -159,6 +162,7 @@ export function LudoBoard({
           })}
           <BoardEffects
             key={state.createdAt}
+            matchId={state.createdAt}
             layout={layout}
             capture={state.lastCapture ?? null}
             celebrate={celebrate ?? null}

@@ -2,12 +2,178 @@ import { chromium, expect, test, type Page } from "@playwright/test";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { brotliCompressSync, gzipSync } from "node:zlib";
 import { createGame, DEFAULT_HOUSE_RULES, updateStandings } from "../../src/lib/ludo/engine";
-import type { Mode } from "../../src/lib/ludo/types";
+import type { Color, Mode } from "../../src/lib/ludo/types";
 import { COLOR_ORDER, START_OFFSET } from "../../src/lib/ludo/board";
 import { CAT_IDS, catUrl } from "../../src/lib/ludo/cat-effects";
 
 const publicOutput =
   process.env["LUDO_TEST_TARGET"] === "vercel" ? ".vercel/output/static" : ".output/public";
+
+test.use({ launchOptions: { args: ["--autoplay-policy=user-gesture-required"] } });
+
+async function expectFullHomeFeedback(page: Page, color: Color) {
+  const picture = page.locator(`.royal-cat-yard[data-color="${color}"] picture`);
+  const bounds = await picture.evaluate((picture) => {
+    const color = picture.closest<HTMLElement>("[data-color]")!.dataset.color;
+    const courtyard = document.querySelector(
+      `.royal-zone[data-color="${color}"] .royal-courtyard`,
+    )!;
+    const media = picture.getBoundingClientRect();
+    const frame = courtyard.getBoundingClientRect();
+    const frameStyle = getComputedStyle(courtyard);
+    const left = parseFloat(frameStyle.borderLeftWidth);
+    const top = parseFloat(frameStyle.borderTopWidth);
+    const right = parseFloat(frameStyle.borderRightWidth);
+    const bottom = parseFloat(frameStyle.borderBottomWidth);
+    const style = getComputedStyle(picture);
+    const image = picture.querySelector("img")!;
+    const imageBounds = image.getBoundingClientRect();
+    return {
+      difference: Math.max(
+        Math.abs(media.x - (frame.x + left)),
+        Math.abs(media.y - (frame.y + top)),
+        Math.abs(media.width - (frame.width - left - right)),
+        Math.abs(media.height - (frame.height - top - bottom)),
+        Math.abs(imageBounds.width - media.width),
+        Math.abs(imageBounds.height - media.height),
+      ),
+      fit: getComputedStyle(image).objectFit,
+      position: getComputedStyle(image).objectPosition,
+      pointerEvents: style.pointerEvents,
+      border: style.borderTopWidth,
+      padding: style.paddingTop,
+      shadow: style.boxShadow,
+      transform: style.transform,
+      media: media.toJSON(),
+      frame: frame.toJSON(),
+      image: imageBounds.toJSON(),
+      inset: style.inset,
+      frameBorder: [left, top, right, bottom],
+    };
+  });
+  expect(bounds.difference, JSON.stringify(bounds)).toBeLessThan(1);
+  expect(bounds.media.width).toBeGreaterThan(0);
+  expect(bounds.media.height).toBeGreaterThan(0);
+  expect(bounds.fit).toBe("cover");
+  expect(bounds.position).toBe("50% 50%");
+  expect(bounds.pointerEvents).toBe("none");
+  expect(bounds.border).toBe("0px");
+  expect(bounds.padding).toBe("0px");
+  expect(bounds.shadow).toBe("none");
+  expect(bounds.transform).toBe("none");
+}
+
+test.describe("mobile audio recovery", () => {
+  test("first tap, unmute, background recovery and offline reopen produce real Web Audio output", async ({
+    page,
+    context,
+  }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(crypto, "getRandomValues", {
+        configurable: true,
+        value: (buffer: Uint8Array) => {
+          buffer.fill(0);
+          return buffer;
+        },
+      });
+      const probe = { contexts: [] as AudioContext[], peak: 0 };
+      Object.defineProperty(window, "__ludoAudioProbe", { value: probe });
+      const Native = window.AudioContext;
+      window.AudioContext = class extends Native {
+        constructor(options?: AudioContextOptions) {
+          super(options);
+          probe.contexts.push(this);
+          const analyser = this.createAnalyser();
+          // Retain a longer waveform window so a brief UI cue is not missed by
+          // main-thread polling on a busy/throttled test host.
+          analyser.fftSize = 2048;
+          // Pull the analyser branch continuously without adding speaker output.
+          const silentOutput = this.createGain();
+          silentOutput.gain.value = 0;
+          analyser.connect(silentOutput).connect(this.destination);
+          const createCompressor = this.createDynamicsCompressor.bind(this);
+          this.createDynamicsCompressor = () => {
+            const compressor = createCompressor();
+            compressor.connect(analyser);
+            return compressor;
+          };
+          const data = new Float32Array(analyser.fftSize);
+          window.setInterval(() => {
+            analyser.getFloatTimeDomainData(data);
+            probe.peak = Math.max(probe.peak, ...data.map(Math.abs));
+          }, 10);
+        }
+      };
+    });
+    const output = () =>
+      page.evaluate(() => {
+        const probe = (
+          window as unknown as { __ludoAudioProbe: { contexts: AudioContext[]; peak: number } }
+        ).__ludoAudioProbe;
+        return { peak: probe.peak, states: probe.contexts.map((context) => context.state) };
+      });
+    const resetPeak = () =>
+      page.evaluate(() => {
+        (window as unknown as { __ludoAudioProbe: { peak: number } }).__ludoAudioProbe.peak = 0;
+      });
+    await page.goto("/");
+    const state = createGame("2P", DEFAULT_HOUSE_RULES, {});
+    Object.assign(
+      state.tokens.find((token) => token.color === state.players[0]!.color)!,
+      { state: "common", steps: 0 },
+    );
+    await page.evaluate(
+      (state) => localStorage.setItem("ludo:save:v1", JSON.stringify(state)),
+      state,
+    );
+    await page.goto("/game");
+    expect((await output()).states).toHaveLength(0);
+    await page.getByRole("button", { name: /Tap to roll/ }).click();
+    await expect.poll(async () => (await output()).peak).toBeGreaterThan(0.15);
+    expect((await output()).peak).toBeLessThan(1);
+    console.log("Mobile audio output peak (post-compressor):", (await output()).peak);
+    expect((await output()).states).toEqual(["running"]);
+    await page.waitForTimeout(1000);
+    await page.getByRole("button", { name: "Mute sound", exact: true }).click();
+    await page.waitForTimeout(100);
+    await resetPeak();
+    await page.getByRole("button", { name: /Tap to roll/ }).click();
+    await page.waitForTimeout(1000);
+    expect((await output()).peak).toBeLessThan(0.001);
+    await page.evaluate(async () => {
+      const probe = (window as unknown as { __ludoAudioProbe: { contexts: AudioContext[] } })
+        .__ludoAudioProbe;
+      await probe.contexts[0]!.suspend();
+    });
+    await page.getByRole("button", { name: "Unmute sound", exact: true }).click();
+    await expect.poll(async () => (await output()).peak).toBeGreaterThan(0.001);
+    expect((await output()).states).toEqual(["running"]);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect.poll(async () => (await output()).states).toEqual(["suspended"]);
+    await page.evaluate(() => {
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect((await output()).states).toEqual(["suspended"]);
+    await resetPeak();
+    await page.getByRole("button", { name: /Tap to roll/ }).click();
+    await expect.poll(async () => (await output()).peak).toBeGreaterThan(0.001);
+    expect((await output()).states).toEqual(["running"]);
+    await prepared(page);
+    await context.setOffline(true);
+    await page.goto("/game");
+    const samples: string[] = [];
+    page.on("request", (request) => {
+      if (/\/audio\//.test(request.url())) samples.push(request.url());
+    });
+    await page.getByRole("button", { name: /Tap to roll/ }).click();
+    await expect.poll(async () => (await output()).peak).toBeGreaterThan(0.001);
+    expect(samples).toEqual([]);
+  });
+});
 
 test("closing the entire browser preserves cold offline new-game and resume support", async () => {
   await mkdir(".artifacts", { recursive: true });
@@ -103,6 +269,7 @@ test("capture sequences for every colour and ranked results work offline", async
     await expect(
       page.locator(`.royal-cat-yard[data-color="${cutter}"] [data-cat="bleh-cat"]`),
     ).toBeVisible();
+    for (const color of [cutter, victim]) await expectFullHomeFeedback(page, color);
     if (index === 0) {
       expect(
         await page
@@ -110,6 +277,27 @@ test("capture sequences for every colour and ranked results work offline", async
           .evaluate((img: HTMLImageElement) => img.currentSrc),
       ).toContain("banana-cat-crying-still.png");
       await page.screenshot({ path: "test-results/cat-capture-houses.png" });
+      // Full-square artwork must not intercept a legal release from underneath.
+      await page.evaluate(() =>
+        Object.defineProperty(crypto, "getRandomValues", {
+          configurable: true,
+          value: (buffer: Uint8Array) => {
+            buffer.fill(5);
+            return buffer;
+          },
+        }),
+      );
+      await page.getByRole("button", { name: /Tap to roll/ }).click();
+      await page.getByRole("button", { name: new RegExp(`^${cutter} piece 2.*can move$`) }).click();
+      await expect
+        .poll(() =>
+          page.evaluate((color) => {
+            const saved = JSON.parse(localStorage.getItem("ludo:save:v1")!);
+            return saved.tokens.filter((token: { color: string }) => token.color === color)[1]
+              .state;
+          }, cutter),
+        )
+        .toBe("common");
     }
     await expect(
       page.locator(`.royal-cat-yard[data-color="${victim}"] [data-cat="crying-crying-cat"]`),
@@ -198,6 +386,9 @@ test("non-final home arrivals show weird-cute only in the correct house offline"
       `.royal-cat-yard[data-color="${color}"][data-role="home"] [data-cat="weird-cute"]`,
     );
     await expect(effect).toBeVisible();
+    // Measure before any sequential image/screenshot checks can exhaust its
+    // three-second window. Persistent ranks cover the full size/theme matrix.
+    await expectFullHomeFeedback(page, color);
     await expect
       .poll(() =>
         effect
@@ -236,7 +427,7 @@ test("non-final home arrivals show weird-cute only in the correct house offline"
 });
 
 for (const mode of ["2P", "3P", "4P"] as Mode[]) {
-  test(`${mode} celebrates a new finish for three seconds without pausing remaining players`, async ({
+  test(`${mode} loops rank cats and delays only final results for six seconds offline`, async ({
     page,
     context,
   }) => {
@@ -282,6 +473,7 @@ for (const mode of ["2P", "3P", "4P"] as Mode[]) {
           ),
       )
       .toBe(true);
+    let finalImagesLoadedAt = 0;
     if (mode !== "2P") {
       await expect(page.getByRole("button", { name: /Tap to roll/ })).toBeEnabled();
       expect(
@@ -291,17 +483,121 @@ for (const mode of ["2P", "3P", "4P"] as Mode[]) {
     } else {
       await expect(page.getByRole("dialog")).toHaveCount(0);
       await expect(page.locator('.royal-cat-yard[data-role="rank"]')).toHaveCount(2);
+      await expect
+        .poll(() =>
+          page
+            .locator('.royal-cat-yard[data-role="rank"] img')
+            .evaluateAll(
+              (images) =>
+                images.length === 2 &&
+                images.every((image) => image.complete && image.naturalWidth > 0),
+            ),
+        )
+        .toBe(true);
+      finalImagesLoadedAt = Date.now();
     }
-    await expect(houseCat).toHaveCount(0, { timeout: 8000 });
-    if (mode === "2P") await expect(page.getByRole("dialog")).toBeVisible();
+    if (mode === "2P") {
+      await page.waitForTimeout(Math.max(0, 4500 - (Date.now() - finalImagesLoadedAt)));
+      await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 250 });
+      await expect(page.getByRole("dialog")).toBeVisible({ timeout: 3000 });
+      await expect(houseCat).toHaveCount(1);
+    } else {
+      await page.waitForTimeout(6500);
+      await expect(houseCat).toBeVisible();
+      await expect(page.getByRole("button", { name: /Tap to roll/ })).toBeEnabled();
+    }
     await expect(page.locator('[role="dialog"] [data-cat]')).toHaveCount(0);
     await page.reload();
     await expect(page.locator(".royal-rank-cat-row")).toHaveCount(0);
     await expect(page.locator('.royal-cat-yard[data-role="rank"]')).toHaveCount(
-      mode === "2P" ? 2 : 0,
+      mode === "2P" ? 2 : 1,
     );
+    if (mode === "2P") {
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.getByRole("button", { name: /Play again/ }).click();
+      await expect(page.locator('.royal-cat-yard[data-role="rank"]')).toHaveCount(0);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+    }
   });
 }
+
+test("final four-player cats restart together and hidden time does not open results", async ({
+  page,
+  context,
+}) => {
+  await prepared(page);
+  await context.setOffline(true);
+  const state = createGame("4P", DEFAULT_HOUSE_RULES, {});
+  for (const player of state.players.slice(0, 2)) {
+    for (const token of state.tokens.filter((token) => token.color === player.color))
+      Object.assign(token, { state: "finished", steps: 56 });
+    updateStandings(state);
+  }
+  const third = state.players[2]!;
+  const own = state.tokens.filter((token) => token.color === third.color);
+  for (const token of own) Object.assign(token, { state: "finished", steps: 56 });
+  Object.assign(own[3]!, { state: "home_stretch", steps: 55 });
+  state.turn.currentPlayerId = third.id;
+  await page.evaluate(
+    (state) => localStorage.setItem("ludo:save:v1", JSON.stringify(state)),
+    state,
+  );
+  await page.goto("/game");
+  const first = page.locator('.royal-cat-yard [data-cat="babsb-cat"] img');
+  await expect(first).toBeVisible();
+  const oldSource = await first.getAttribute("src");
+  await page.evaluate(() =>
+    Object.defineProperty(crypto, "getRandomValues", {
+      configurable: true,
+      value: (buffer: Uint8Array) => {
+        buffer.fill(0);
+        return buffer;
+      },
+    }),
+  );
+  await page.getByRole("button", { name: /Tap to roll/ }).click();
+  const houses = page.locator('.royal-cat-yard[data-role="rank"]');
+  await expect(houses).toHaveCount(4);
+  expect(await first.getAttribute("src")).not.toBe(oldSource);
+  await expect
+    .poll(() =>
+      houses
+        .locator("img")
+        .evaluateAll((images) =>
+          images.every(
+            (image) =>
+              (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0,
+          ),
+        ),
+    )
+    .toBe(true);
+  await page.waitForTimeout(2000);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect
+    .poll(() => first.evaluate((image: HTMLImageElement) => image.currentSrc))
+    .toContain("babsb-cat-still.png");
+  await page.waitForTimeout(6500);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, get: () => false });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.waitForTimeout(2000);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(houses).toHaveCount(4);
+  await expect
+    .poll(() => first.evaluate((image: HTMLImageElement) => image.currentSrc))
+    .toContain("babsb-cat.gif");
+  await page.screenshot({ path: "test-results/cat-final-looping.png" });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect
+    .poll(() => first.evaluate((image: HTMLImageElement) => image.currentSrc))
+    .toContain("babsb-cat-still.png");
+});
 
 for (const team of ["A", "B"] as const) {
   test(`team ${team} gets cats in both winning houses and both losing houses offline`, async ({
@@ -343,14 +639,17 @@ for (const team of ["A", "B"] as const) {
     ).toHaveCount(2);
     await expect(page.locator('.royal-cat-yard[data-role="rank"]')).toHaveCount(4);
     await page.screenshot({ path: `test-results/cat-team-${team}-results.png` });
+    await page.waitForTimeout(5000);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.locator('.royal-cat-yard[data-role="rank"]')).toHaveCount(4);
     await expect(
       page.locator('.royal-player-panel [data-cat], [role="dialog"] [data-cat]'),
     ).toHaveCount(0);
   });
 }
 
-test("four-player resumed standings show all four correct static rank cats only in houses", async ({
+test("four-player resumed standings restore looping rank cats and immediate results only in houses", async ({
   page,
   context,
 }) => {
@@ -377,12 +676,13 @@ test("four-player resumed standings show all four correct static rank cats only 
     const row = page.locator(`.royal-cat-yard[data-color="${state.players[index]!.color}"]`);
     await expect(row.locator(`[data-cat="${cat}"]`)).toBeVisible();
     expect(await row.locator("img").evaluate((img: HTMLImageElement) => img.currentSrc)).toContain(
-      `${cat}-still.png`,
+      `${cat}.gif`,
     );
   }
   await expect(
     page.locator('.royal-player-panel [data-cat], [role="dialog"] [data-cat]'),
   ).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toBeVisible();
   await page.screenshot({ path: "test-results/cat-four-ranks.png" });
 });
 
@@ -676,6 +976,263 @@ test("interrupted first preparation remains playable online and retry completes 
   await context.setOffline(true);
   await page.goto("/game");
   await expect(page.locator(".royal-board")).toBeVisible();
+});
+
+for (const width of [320, 360, 430, 1280]) {
+  test(`compact cut bonus stays outside the board at ${width}px in both themes offline`, async ({
+    page,
+    context,
+  }, testInfo) => {
+    await prepared(page);
+    await context.setOffline(true);
+    await page.setViewportSize({ width, height: width === 1280 ? 960 : 800 });
+    for (const theme of ["dark", "light"]) {
+      for (const choice of ["Bring out a token", "Jump a token 6 spaces", "Roll again"]) {
+        const state = createGame(
+          width === 360 ? "2P" : "4P",
+          { ...DEFAULT_HOUSE_RULES, cutReward: true },
+          {},
+        );
+        Object.assign(state.tokens[0]!, { state: "common", steps: 1 });
+        state.phase = "modal";
+        state.activeModal = "CUT_REWARD";
+        state.turn.owedExtraRoll = true;
+        state.modalContext = { cutterColor: state.players[0]!.color };
+        await page.evaluate(
+          ({ state, theme }) => {
+            localStorage.setItem("ludo:save:v1", JSON.stringify(state));
+            localStorage.setItem("ludo:app-theme:v1", theme);
+          },
+          { state, theme },
+        );
+        await page.goto("/game");
+        const panel = page.getByRole("region", { name: "Nice cut! Pick your bonus" });
+        await expect(panel).toBeVisible();
+        await expect(page.getByRole("button", { name: "Leave game", exact: true })).toBeDisabled();
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+        const geometry = await panel.evaluate((panel) => {
+          const board = document.querySelector(".royal-board")!.getBoundingClientRect();
+          const box = panel.getBoundingClientRect();
+          return {
+            boardBottom: board.bottom,
+            panelTop: box.top,
+            height: box.height,
+            widths: Array.from(
+              panel.querySelectorAll("button"),
+              (button) => button.getBoundingClientRect().width,
+            ),
+            heights: Array.from(
+              panel.querySelectorAll("button"),
+              (button) => button.getBoundingClientRect().height,
+            ),
+            boardWidth: board.width,
+            boardHeight: board.height,
+          };
+        });
+        expect(geometry.panelTop).toBeGreaterThanOrEqual(geometry.boardBottom);
+        expect(geometry.height).toBeLessThan(150);
+        for (const size of geometry.widths) expect(size).toBeGreaterThanOrEqual(43.9);
+        for (const size of geometry.heights) expect(size).toBeGreaterThanOrEqual(44);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+        const info = panel.getByRole("button", { name: `Info: ${choice}`, exact: true });
+        await info.click();
+        await expect(info).toHaveAttribute("aria-expanded", "true");
+        await expect(panel.locator(".royal-bonus-details")).toBeVisible();
+        const unchanged = await page.evaluate(() =>
+          JSON.parse(localStorage.getItem("ludo:save:v1")!),
+        );
+        expect(unchanged.tokens).toEqual(state.tokens);
+        expect(unchanged.turn).toEqual(state.turn);
+        expect(unchanged.activeModal).toBe("CUT_REWARD");
+        const boardSize = await page.locator(".royal-board").boundingBox();
+        expect(boardSize!.width).toBe(geometry.boardWidth);
+        expect(boardSize!.height).toBe(geometry.boardHeight);
+        await info.click();
+        await expect(info).toHaveAttribute("aria-expanded", "false");
+        await panel.scrollIntoViewIfNeeded();
+        const clearTargets = await panel.evaluate((panel) =>
+          Array.from(panel.querySelectorAll("button"), (button) => {
+            const box = button.getBoundingClientRect();
+            const hit = document.elementFromPoint(box.left + box.width / 2, box.bottom - 2);
+            return hit !== null && button.contains(hit);
+          }),
+        );
+        expect(clearTargets.every(Boolean)).toBe(true);
+        if (choice === "Roll again")
+          await page.screenshot({
+            path: testInfo.outputPath(`${width}-${theme}-cut-bonus.png`),
+            fullPage: true,
+          });
+        await panel.getByRole("button", { name: choice, exact: true }).click();
+        await expect(panel).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Leave game", exact: true })).toBeEnabled();
+        await expect(page.getByRole("button", { name: /Tap to roll/ })).toBeEnabled();
+        const next = await page.evaluate(() => JSON.parse(localStorage.getItem("ludo:save:v1")!));
+        expect(next.turn.currentPlayerId).toBe(state.turn.currentPlayerId);
+        expect(next.turn.consecutiveSixes).toBe(state.turn.consecutiveSixes);
+        if (choice === "Bring out a token") expect(next.tokens[1].state).toBe("common");
+        if (choice === "Jump a token 6 spaces") expect(next.tokens[0].steps).toBe(7);
+        if (choice === "Roll again") expect(next.tokens).toEqual(state.tokens);
+      }
+    }
+  });
+}
+
+test("a live cut opens an outside-board panel and disabled bonuses still explain themselves", async ({
+  page,
+  context,
+}) => {
+  await prepared(page);
+  await context.setOffline(true);
+  const state = createGame("4P", { ...DEFAULT_HOUSE_RULES, cutReward: true }, {});
+  Object.assign(state.tokens[0]!, { state: "common", steps: 0 });
+  Object.assign(
+    state.tokens.find((token) => token.color === "green")!,
+    { state: "common", steps: (START_OFFSET.red + 1 - START_OFFSET.green + 52) % 52 },
+  );
+  await page.evaluate(
+    (state) => localStorage.setItem("ludo:save:v1", JSON.stringify(state)),
+    state,
+  );
+  await page.goto("/game");
+  await page.evaluate(() =>
+    Object.defineProperty(crypto, "getRandomValues", {
+      configurable: true,
+      value: (buffer: Uint8Array) => {
+        buffer.fill(0);
+        return buffer;
+      },
+    }),
+  );
+  await page.getByRole("button", { name: /Tap to roll/ }).click();
+  const panel = page.getByRole("region", { name: "Nice cut! Pick your bonus" });
+  await expect(panel).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator('.royal-cat-yard[data-role="victim"]')).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Bring out a token", exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
+  const firstInfo = panel.getByRole("button", { name: "Info: Bring out a token", exact: true });
+  await expect(firstInfo).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(firstInfo).toHaveAttribute("aria-expanded", "true");
+  await expect(panel).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(firstInfo).toHaveAttribute("aria-expanded", "false");
+  await panel.getByRole("button", { name: "Roll again", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(panel).toHaveCount(0);
+  for (const missing of ["release", "move"]) {
+    const state = createGame("4P", { ...DEFAULT_HOUSE_RULES, cutReward: true }, {});
+    if (missing === "release")
+      for (const [index, token] of state.tokens.filter((token) => token.color === "red").entries())
+        Object.assign(token, { state: "common", steps: index * 8 });
+    state.phase = "modal";
+    state.activeModal = "CUT_REWARD";
+    state.turn.owedExtraRoll = true;
+    await page.evaluate(
+      (state) => localStorage.setItem("ludo:save:v1", JSON.stringify(state)),
+      state,
+    );
+    await page.goto("/game");
+    const name = missing === "release" ? "Bring out a token" : "Jump a token 6 spaces";
+    await expect(panel.getByRole("button", { name, exact: true })).toBeDisabled();
+    await panel.getByRole("button", { name: `Info: ${name}`, exact: true }).click();
+    await expect(panel.locator(".royal-bonus-unavailable")).toContainText(
+      missing === "release" ? "No yard token" : "No token can legally move",
+    );
+    await panel.getByRole("button", { name: "Roll again", exact: true }).click();
+    await expect(panel).toHaveCount(0);
+  }
+});
+
+for (const width of [320, 360, 430, 768, 1280]) {
+  test(`full inner-home rank artwork at ${width}px in both themes offline`, async ({
+    page,
+    context,
+  }, testInfo) => {
+    await prepared(page);
+    await context.setOffline(true);
+    await page.setViewportSize({ width, height: width === 1280 ? 720 : 800 });
+    await page.emulateMedia({ reducedMotion: width === 320 ? "reduce" : "no-preference" });
+    for (const theme of ["dark", "light"]) {
+      for (const color of COLOR_ORDER) {
+        const state = createGame("4P", DEFAULT_HOUSE_RULES, {});
+        for (const token of state.tokens.filter((token) => token.color === color))
+          Object.assign(token, { state: "finished", steps: 56 });
+        updateStandings(state);
+        await page.evaluate(
+          ({ state, theme }) => {
+            localStorage.setItem("ludo:save:v1", JSON.stringify(state));
+            localStorage.setItem("ludo:app-theme:v1", theme);
+          },
+          { state, theme },
+        );
+        await page.goto("/game");
+        await expectFullHomeFeedback(page, color);
+        await expect(page.locator("[role=dialog]")).toHaveCount(0);
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+        // Presentation must not move or resize any token when feedback is shown.
+        const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("ludo:save:v1")!));
+        expect(saved.tokens).toEqual(state.tokens);
+        if (color === "green") {
+          await expect
+            .poll(() =>
+              page
+                .locator('[data-cat="babsb-cat"] img')
+                .evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0),
+            )
+            .toBe(true);
+          await page.screenshot({
+            path: testInfo.outputPath(`${width}-${theme}-inner-home.png`),
+            fullPage: true,
+          });
+        }
+      }
+    }
+  });
+}
+
+test("full inner-home rank artwork follows all 12 ordered two-player seats", async ({
+  page,
+  context,
+}) => {
+  await prepared(page);
+  await context.setOffline(true);
+  for (const [index, first] of COLOR_ORDER.entries()) {
+    for (const second of COLOR_ORDER.filter((color) => color !== first)) {
+      const state = createGame("2P", DEFAULT_HOUSE_RULES, {}, [first, second]);
+      for (const token of state.tokens.filter((token) => token.color === first))
+        Object.assign(token, { state: "finished", steps: 56 });
+      updateStandings(state);
+      await page.evaluate(
+        ({ state, theme }) => {
+          localStorage.setItem("ludo:save:v1", JSON.stringify(state));
+          localStorage.setItem("ludo:app-theme:v1", theme);
+        },
+        { state, theme: index % 2 === 0 ? "dark" : "light" },
+      );
+      await page.goto("/game");
+      for (const color of [first, second]) await expectFullHomeFeedback(page, color);
+      const positions = await page.locator(".royal-cat-yard").evaluateAll((yards) =>
+        yards.map((yard) => ({
+          color: (yard as HTMLElement).dataset.color,
+          left: (yard as HTMLElement).style.left,
+          top: (yard as HTMLElement).style.top,
+        })),
+      );
+      expect(positions).toEqual(
+        expect.arrayContaining([
+          { color: first, left: "0%", top: "0%" },
+          { color: second, left: "60%", top: "60%" },
+        ]),
+      );
+    }
+  }
 });
 
 test("mobile layouts keep setup names reachable and board bounded in both themes", async ({

@@ -9,6 +9,8 @@ A local pass-and-play Ludo game for two to four players. It runs as a TanStack S
 
 ## Development
 
+The latest measured mobile gameplay optimization, before/after metrics and remaining limits are documented in [PERFORMANCE_OPTIMIZATION.md](./PERFORMANCE_OPTIMIZATION.md).
+
 Install dependencies and start the Vite development server:
 
 ```sh
@@ -66,6 +68,10 @@ Builds optimize only generated deployment copies of images and icons before prec
 
 Game saves retain `ludo:save:v1` and the existing stable-state checkpoint/recovery behavior. Audio preferences and independent royal skin IDs use `ludo:preferences:v1`; app Light/Dark mode retains `ludo:app-theme:v1`. Starting or clearing a game keeps device preferences, while new setup suggestions still default OFF. House rules remain part of each saved game. A nonblocking warning appears if local storage cannot save progress or preferences.
 
+Mobile sound unlocks inside trusted taps/keyboard activation, including the Unmute and settings controls. A cue waits briefly for asynchronous audio resume, but stale/muted/hidden cues never replay. Backgrounding stops audio; the next interaction recovers suspended/interrupted contexts. Supporting platforms use a playback audio session. The current release synthesizes all cues locally, so no MP3 download or internet connection is needed. Real-phone output still depends on system media volume and browser/OS audio settings.
+
+Synthesized effects and enabled music use a shared 4× output gain (+12 dB), with compression to control overlapping cues. Available audio samples play at full app volume. Sound OFF remains silent; use the device's media-volume controls to adjust final loudness. The app cannot override device mute, output limits or browser playback permissions.
+
 Production browser and mobile profiling checks (build first):
 
 ```sh
@@ -90,6 +96,8 @@ Setup's **Move suggestions** switch defaults OFF for each new game and shares on
 
 Every opponent capture earns another roll. Own pieces, teammates and safe-square occupants cannot be cut. With **Cut Reward** enabled, release or move-six happens before that earned roll; choosing Roll again takes the same roll immediately, without doubling it. With **Three 6s Variant** enabled, a played third six that captures or reaches home earns a roll and starts a fresh six streak. Without that variant, the third six is skipped before movement.
 
+Cut Reward choices appear in a compact, icon-based panel below the board/player cards, without a backdrop or board-covering popup. **Release**, **Move 6** and **Roll** retain the same actions; each has a separate 44px info control that expands its explanation inside the panel, including why an option is unavailable. The panel matches both themes, preserves board dimensions, and reserves bottom-banner/device-inset space. Short windows can scroll. Exit remains disabled until the required bonus is chosen, preventing a pending reward from being discarded; sound, theme and guidance controls remain available.
+
 See [ROYAL_VERIFICATION.md](./ROYAL_VERIFICATION.md) for measured build sizes, automated coverage, and device checks still pending.
 
 See [STACKING_GUIDANCE_VERIFICATION.md](./STACKING_GUIDANCE_VERIFICATION.md) for the stable-stack and unified-guidance regression results and pending browser checks.
@@ -98,7 +106,11 @@ Capture feedback uses the cats under `/animation`: the actual cutter's corner sh
 
 Each of a player's first three tokens reaching home shows `weird-cute.webp` in that player's remapped starting house for three seconds, alongside the existing brief sparkle. The fourth token never shows this effect; it retains normal rank/team-victory behavior. Rapid arrivals replace older effects safely, and saved finishes are not replayed on resume.
 
-After all four of a player's tokens finish, rank cats appear only inside their remapped starting house for three seconds: first `babsb-cat.gif`, second `dancing-cat-ai.gif`, third `happy-cat.gif` where applicable. Player cards retain names and `Finished #1`, `Finished #2`, etc., without cat graphics. Ranks take precedence over any older capture/home sequence in that house. The remaining loser gets `crying-crying-cat.gif` at game end. In teams, both winners get the first-place cat and both losers the crying cat only when the complete team wins. Final standings briefly celebrate every house before opening text-only results, leaving the board visible during the effects. Completed-game resume shows static rank cats in the houses without replaying old celebrations.
+All house incident/rank artwork fills the complete token-home square just inside its existing frame. Courtyard artwork and overlays share inset/border-width variables; overlays add no border, padding or shadow. Images use centered, aspect-preserving cover cropping, with an opacity-only entrance, and never intercept token taps. This includes remapped two-player houses; effect durations and gameplay are unchanged.
+
+After all four of a player's tokens finish, rank cats loop inside their remapped starting house while the other players continue: first `babsb-cat.gif`, second `dancing-cat-ai.gif`, third `happy-cat.gif` where applicable. Player cards retain names and `Finished #1`, `Finished #2`, etc., without cat graphics. Ranks take precedence over any older capture/home sequence in that house. The remaining loser gets `crying-crying-cat.gif` at game end. In teams, both winners get the first-place cat and both losers the crying cat only when the complete team wins.
+
+Final standings restart all assigned house GIFs together. Once every image has loaded or fallen back (unresolved loading is bounded to ten seconds), a six-second foreground celebration precedes the text-only winner popup. The GIFs keep looping behind the popup until rematch or exit. Hidden pages pause the countdown and use static frames; reduced motion uses static artwork with the same delay. Ongoing-game resume restores looping ranks; completed-game resume restores them with results immediately, without replaying the countdown. Capture stages and `weird-cute.webp` remain three seconds each.
 
 Deployment copies of the seven cat GIFs are optimized; the already-small WebP retains its original bytes and frames. Eight static frames are generated for reduced motion/hidden pages. All sixteen media files are hash-verified and precached before installation readiness. Source cat originals remain intact; obsolete teddy assets and components are removed. See [CAT_EFFECTS_VERIFICATION.md](./CAT_EFFECTS_VERIFICATION.md) for checks, media growth and performance measurements.
 

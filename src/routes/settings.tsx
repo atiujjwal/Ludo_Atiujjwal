@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useGame } from "@/lib/ludo/store";
 import { guidanceEnabled } from "@/lib/ludo/guidance";
-import { playSfx } from "@/lib/ludo/audio";
+import { configureAudio, playSfx, unlockAudio } from "@/lib/ludo/audio";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAppTheme } from "@/lib/app-theme-context";
 
@@ -55,7 +55,9 @@ function SettingsScreen() {
           <span className="font-semibold">Sound effects</span>
           <Switch
             checked={mounted ? state.settings.soundOn : true}
-            onCheckedChange={() => {
+            onCheckedChange={(on) => {
+              configureAudio(on, state.settings.hapticsOn);
+              if (on) unlockAudio();
               dispatch({ type: "TOGGLE_SETTING", key: "soundOn" });
               playSfx("uiTap");
             }}
@@ -73,6 +75,7 @@ function SettingsScreen() {
           <Switch
             checked={mounted ? Boolean(state.settings.musicOn) : false}
             onCheckedChange={() => {
+              unlockAudio();
               dispatch({ type: "TOGGLE_SETTING", key: "musicOn" });
               playSfx("uiTap");
             }}

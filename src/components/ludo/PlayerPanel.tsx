@@ -1,4 +1,5 @@
 import { Crown } from "lucide-react";
+import { memo } from "react";
 
 import { Dice } from "@/components/ludo/Dice";
 import { Token } from "@/components/ludo/Token";
@@ -19,7 +20,7 @@ interface Props {
   flip?: boolean;
 }
 
-export function PlayerPanel({
+function PlayerPanelView({
   state,
   player,
   isTurn,
@@ -116,3 +117,30 @@ export function PlayerPanel({
     </div>
   );
 }
+
+const finishedCount = (state: GameState, color: Player["color"]) =>
+  state.tokens.filter((token) => token.color === color && token.state === "finished").length;
+
+export const PlayerPanel = memo(PlayerPanelView, (a, b) => {
+  if (
+    a.player.id !== b.player.id ||
+    a.player.nickname !== b.player.nickname ||
+    a.player.finishRank !== b.player.finishRank ||
+    a.player.teamId !== b.player.teamId ||
+    a.isTurn !== b.isTurn ||
+    a.flip !== b.flip ||
+    a.onRoll !== b.onRoll
+  )
+    return false;
+  if (finishedCount(a.state, a.player.color) !== finishedCount(b.state, b.player.color))
+    return false;
+  if (!a.isTurn) return true;
+  return (
+    a.actingColor === b.actingColor &&
+    a.canRoll === b.canRoll &&
+    a.rolling === b.rolling &&
+    a.state.turn.diceValue === b.state.turn.diceValue &&
+    a.state.turn.consecutiveSixes === b.state.turn.consecutiveSixes &&
+    a.state.phase === b.state.phase
+  );
+});

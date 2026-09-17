@@ -61,6 +61,9 @@ const RECIPES: Record<SfxName, Note[]> = {
 };
 
 let ctx: AudioContext | null = null;
+// +12 dB for the synthesized cues/music; device media volume remains authoritative.
+const OUTPUT_GAIN = 4;
+let output: GainNode | null = null;
 let enabled = true;
 let hapticsEnabled = true;
 declare const __LUDO_AUDIO_FILES__: string[];
@@ -70,6 +73,8 @@ const availableSamples = new Set(
 const voices = new Map<OscillatorNode, { gain: GainNode; music: boolean }>();
 let musicRequested = false;
 let visibilityInstalled = false;
+let resumePending: Promise<void> | null = null;
+let audioGeneration = 0;
 const hidden = () => typeof document !== "undefined" && document.hidden;
 
 function stopVoices(musicOnly = false) {
@@ -98,6 +103,7 @@ export function configureAudio(sound: boolean, haptics: boolean): void {
   enabled = sound;
   hapticsEnabled = haptics;
   if (!sound) {
+    audioGeneration++;
     stopVoices();
     stopSamples();
   }
@@ -106,43 +112,128 @@ export function configureAudio(sound: boolean, haptics: boolean): void {
 
 /** Must run inside a user gesture (iOS requirement). */
 export function unlockAudio(): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || hidden()) return;
   try {
-    if (!ctx) {
+    if (!ctx || ctx.state === "closed") {
       const Ctor =
         window.AudioContext ??
         (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!Ctor) return;
-      ctx = new Ctor();
+      ctx = new Ctor({ latencyHint: "interactive" });
+      output = ctx.createGain();
+      output.gain.setValueAtTime(OUTPUT_GAIN, ctx.currentTime);
+      // Keep overlapping cues controlled rather than boosting straight into clipping.
+      const compressor = ctx.createDynamicsCompressor();
+      compressor.threshold.setValueAtTime(-3, ctx.currentTime);
+      compressor.knee.setValueAtTime(6, ctx.currentTime);
+      compressor.ratio.setValueAtTime(12, ctx.currentTime);
+      compressor.attack.setValueAtTime(0.003, ctx.currentTime);
+      compressor.release.setValueAtTime(0.1, ctx.currentTime);
+      output.connect(compressor).connect(ctx.destination);
+      try {
+        const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+        if (session) session.type = "playback";
+      } catch {
+        /* Optional platform playback session; unsupported browsers use Web Audio. */
+      }
     }
-    void ctx
-      .resume()
-      .then(() => {
-        if (musicTimer === null) restartMusic();
-      })
-      .catch(() => {});
+    if (ctx.state !== "running") {
+      const audio = ctx;
+      const pending = audio.resume().then(
+        () => {
+          if (ctx === audio && musicTimer === null) restartMusic();
+        },
+        () => {},
+      );
+      resumePending = pending;
+      void pending.then(() => {
+        if (resumePending === pending) resumePending = null;
+      });
+      // Prime the output synchronously in the gesture, including on older iOS.
+      try {
+        const source = audio.createBufferSource();
+        source.buffer = audio.createBuffer(1, 1, audio.sampleRate);
+        source.connect(audio.destination);
+        source.onended = () => source.disconnect();
+        source.start();
+      } catch {
+        /* Resume still works if priming is unavailable. */
+      }
+    }
     if (!visibilityInstalled && typeof document !== "undefined") {
       visibilityInstalled = true;
-      document.addEventListener("visibilitychange", () => {
-        if (hidden()) {
-          stopVoices();
-          stopSamples();
-          void ctx?.suspend().catch(() => {});
-        }
-        // Audio resumes on the next actual interaction, respecting autoplay rules.
-        restartMusic();
-      });
+      document.addEventListener("visibilitychange", handleVisibility);
     }
     if (musicTimer === null) restartMusic();
   } catch {
     ctx = null;
+    output = null;
   }
+}
+
+function handleVisibility() {
+  if (hidden()) {
+    audioGeneration++;
+    stopVoices();
+    stopSamples();
+    void ctx?.suspend().catch(() => {});
+  }
+  // Resume on the next trusted gesture, never just because the page is visible.
+  restartMusic();
+}
+
+/** One app-level listener set; all mobile/keyboard controls can recover audio. */
+export function installAudioGestureHandlers(): () => void {
+  if (typeof document === "undefined") return () => {};
+  const gesture = (event: Event) => {
+    if (!event.isTrusted || !enabled || hidden()) return;
+    if (event instanceof KeyboardEvent && event.key !== "Enter" && event.key !== " ") return;
+    unlockAudio();
+  };
+  const events = ["pointerdown", "touchend", "click", "keydown"] as const;
+  for (const event of events)
+    document.addEventListener(event, gesture, { capture: true, passive: true });
+  return () => {
+    for (const event of events) document.removeEventListener(event, gesture, true);
+    document.removeEventListener("visibilitychange", handleVisibility);
+    visibilityInstalled = false;
+    handleVisibilityCleanup();
+  };
+}
+
+function handleVisibilityCleanup() {
+  audioGeneration++;
+  stopVoices();
+  stopSamples();
+  if (musicTimer !== null) window.clearInterval(musicTimer);
+  musicTimer = null;
+  void ctx?.suspend().catch(() => {});
 }
 
 function playSynth(name: SfxName): void {
   if (!enabled || hidden() || typeof window === "undefined") return;
-  if (!ctx) unlockAudio();
-  if (!ctx || ctx.state === "suspended") return;
+  // Some mobile contexts expose "running" before their resume promise resolves.
+  // Waiting for that promise prevents a short cue ending before output resumes.
+  if (!ctx || ctx.state !== "running" || resumePending) {
+    unlockAudio();
+    if (ctx?.state === "running" && !resumePending) {
+      playSynth(name);
+      return;
+    }
+    const generation = audioGeneration;
+    const requested = Date.now();
+    if (resumePending)
+      void resumePending.then(() => {
+        // Never replay stale cues after a delayed permission, mute or interruption.
+        if (
+          generation === audioGeneration &&
+          Date.now() - requested < 250 &&
+          ctx?.state === "running"
+        )
+          playSynth(name);
+      });
+    return;
+  }
   const audio = ctx;
   for (const note of RECIPES[name]) {
     const start = audio.currentTime + (note.delay ?? 0);
@@ -154,7 +245,7 @@ function playSynth(name: SfxName): void {
     gain.gain.setValueAtTime(0.0001, start);
     gain.gain.exponentialRampToValueAtTime(peak, start + 0.012);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + note.dur);
-    osc.connect(gain).connect(audio.destination);
+    osc.connect(gain).connect(output!);
     trackVoice(osc, gain, false);
     osc.start(start);
     osc.stop(start + note.dur + 0.02);
@@ -179,12 +270,6 @@ const FILES: Record<SfxName, string> = {
   uiTap: "token_select.mp3",
   gameWin: "match_win.mp3",
   errorBuzz: "invalid_move.mp3",
-};
-
-const VOLUME: Partial<Record<SfxName, number>> = {
-  tokenHop: 0.35,
-  uiTap: 0.4,
-  diceRoll: 0.6,
 };
 
 type SampleState = "unknown" | "ready" | "missing";
@@ -235,7 +320,7 @@ export function playSfx(name: SfxName): void {
   const el = sample(name);
   if (el) {
     try {
-      el.volume = VOLUME[name] ?? 0.8;
+      el.volume = 1;
       void el.play().catch(() => playSynth(name));
       return;
     } catch {
@@ -245,7 +330,7 @@ export function playSfx(name: SfxName): void {
   playSynth(name);
 }
 
-/* ---------- Background music: a soft, slow synthesized loop ---------- */
+/* ---------- Background music: a slow synthesized loop, balanced below cues ---------- */
 const MUSIC_BAR: Note[] = [
   { freq: 262, dur: 1.6, type: "sine", gain: 0.025 },
   { freq: 330, dur: 1.4, type: "sine", delay: 0.8, gain: 0.02 },
@@ -256,7 +341,7 @@ const MUSIC_BAR: Note[] = [
 let musicTimer: number | null = null;
 
 function playMusicBar(): void {
-  if (!enabled || hidden() || !ctx || ctx.state === "suspended") return;
+  if (!enabled || hidden() || !ctx || ctx.state !== "running") return;
   const audio = ctx;
   for (const note of MUSIC_BAR) {
     const start = audio.currentTime + (note.delay ?? 0);
@@ -268,7 +353,7 @@ function playMusicBar(): void {
     gain.gain.setValueAtTime(0.0001, start);
     gain.gain.exponentialRampToValueAtTime(peak, start + 0.4);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + note.dur);
-    osc.connect(gain).connect(audio.destination);
+    osc.connect(gain).connect(output!);
     trackVoice(osc, gain, true);
     osc.start(start);
     osc.stop(start + note.dur + 0.05);
@@ -287,7 +372,7 @@ function restartMusic(): void {
     musicTimer = null;
   }
   stopVoices(true);
-  if (!musicRequested || !enabled || hidden() || !ctx || ctx.state === "suspended") return;
+  if (!musicRequested || !enabled || hidden() || !ctx || ctx.state !== "running") return;
   playMusicBar();
   musicTimer = window.setInterval(playMusicBar, 4200);
 }

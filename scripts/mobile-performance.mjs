@@ -4,8 +4,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { gzipSync } from "node:zlib";
 
 const label = process.argv[2] ?? "current";
+const trace = process.argv.includes("--trace");
 const port = 4318;
 const origin = `http://127.0.0.1:${port}`;
+const percentile = (values, ratio) => {
+  const ordered = [...values].sort((a, b) => a - b);
+  return ordered[Math.max(0, Math.ceil(ordered.length * ratio) - 1)];
+};
 const server = spawn(process.execPath, [".output/server/index.mjs"], {
   env: {
     ...process.env,
@@ -34,9 +39,21 @@ try {
     isMobile: true,
     hasTouch: true,
   });
+  if (trace) await context.tracing.start({ screenshots: false, snapshots: false, sources: false });
   const page = await context.newPage();
   await page.bringToFront();
+  await page.addInitScript(() => {
+    window.__ludoLongTasks = [];
+    try {
+      new PerformanceObserver((entries) => {
+        for (const entry of entries.getEntries()) window.__ludoLongTasks.push(entry.duration);
+      }).observe({ type: "longtask", buffered: true });
+    } catch {
+      /* unsupported browser */
+    }
+  });
   const session = await context.newCDPSession(page);
+  await session.send("Performance.enable");
   await session.send("Emulation.setCPUThrottlingRate", { rate: 6 });
   await page.goto(origin);
   await page.getByRole("heading", { name: "Ludo", exact: true }).waitFor();
@@ -62,7 +79,9 @@ try {
   await page.waitForTimeout(1200);
   await context.setOffline(true);
   const offlineStartupMs = [];
-  for (let i = 0; i < 5; i++) {
+  const offlineHydrationMs = [];
+  const offlineReadinessMs = [];
+  for (let i = 0; i < 10; i++) {
     const cold = await context.newPage();
     await cold.bringToFront();
     const cdp = await context.newCDPSession(cold);
@@ -71,11 +90,15 @@ try {
     await cold.goto(origin);
     await cold.getByRole("heading", { name: "Ludo", exact: true }).waitFor();
     await cold.getByRole("link", { name: "Play", exact: true }).waitFor();
+    const hydrated = Date.now();
     // React hydration has attached interactive controls by this point.
     await cold.waitForFunction(() =>
       document.querySelector(".royal-offline-status")?.textContent?.includes("Ready"),
     );
-    offlineStartupMs.push(Date.now() - start);
+    const readyAt = Date.now();
+    offlineHydrationMs.push(hydrated - start);
+    offlineReadinessMs.push(readyAt - hydrated);
+    offlineStartupMs.push(readyAt - start);
     await cold.close();
   }
   await page.bringToFront();
@@ -175,6 +198,15 @@ try {
   const frameIntervalsMs = await frames;
   const selectionFeedbackMs = await page.evaluate(() => window.__selectionFeedback);
   const orderedFrames = [...frameIntervalsMs].sort((a, b) => a - b);
+  const runtimeMetrics = Object.fromEntries(
+    (await session.send("Performance.getMetrics")).metrics
+      .filter((metric) =>
+        ["Nodes", "JSEventListeners", "JSHeapUsedSize", "TaskDuration", "LayoutCount"].includes(
+          metric.name,
+        ),
+      )
+      .map((metric) => [metric.name, metric.value]),
+  );
   let captureProfile;
   if (label === "cats") {
     // Use an actual saved 2P game as the fixture, then trigger a real UI capture.
@@ -267,7 +299,10 @@ try {
     critical,
     criticalGzipBytes,
     offlineStartupMs,
-    medianOfflineStartupMs: [...offlineStartupMs].sort((a, b) => a - b)[2],
+    offlineHydrationMs,
+    offlineReadinessMs,
+    medianOfflineStartupMs: percentile(offlineStartupMs, 0.5),
+    p95OfflineStartupMs: percentile(offlineStartupMs, 0.95),
     diceFeedbackMs,
     diceClickFeedbackMs,
     selectionFeedbackMs,
@@ -275,9 +310,14 @@ try {
     p95FrameIntervalMs: orderedFrames[Math.floor(orderedFrames.length * 0.95)],
     framesOver34Ms: frameIntervalsMs.filter((duration) => duration > 34).length,
     measuredFrames: frameIntervalsMs.length,
+    longTasksMs: await page.evaluate(() => window.__ludoLongTasks ?? []),
+    domNodes: await page.evaluate(() => document.getElementsByTagName("*").length),
+    usedHeapBytes: await page.evaluate(() => performance.memory?.usedJSHeapSize ?? null),
+    runtimeMetrics,
     ...(captureProfile ? { captureProfile } : {}),
   };
   await writeFile(`.artifacts/performance-${label}.json`, JSON.stringify(report, null, 2));
+  if (trace) await context.tracing.stop({ path: `.artifacts/trace-${label}.zip` });
   console.log(JSON.stringify(report, null, 2));
 } finally {
   await browser?.close();

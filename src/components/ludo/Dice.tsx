@@ -59,7 +59,13 @@ export function Dice({
   return (
     <button
       type="button"
-      onClick={onRoll}
+      onClick={(event) => {
+        if (!active) return;
+        // Immediate compositor feedback; React remains authoritative for the
+        // roll lifecycle and result.
+        event.currentTarget.dataset["rolling"] = "true";
+        onRoll?.();
+      }}
       disabled={!active}
       aria-label={
         active

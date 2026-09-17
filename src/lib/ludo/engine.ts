@@ -209,8 +209,18 @@ export function pathSquares(token: Token, dice: number, layout = DEFAULT_BOARD_L
 /** A move is blocked when any traversed square (or the destination) is an enemy wall. */
 export function moveIsBlocked(state: GameState, token: Token, dice: number): boolean {
   const walls = blockades(state);
+  return moveIsBlockedBy(state, token, dice, walls, boardLayoutOf(state.gameConfig));
+}
+
+function moveIsBlockedBy(
+  state: GameState,
+  token: Token,
+  dice: number,
+  walls: Map<number, Color>,
+  layout = boardLayoutOf(state.gameConfig),
+): boolean {
   if (walls.size === 0) return false;
-  for (const square of pathSquares(token, dice, boardLayoutOf(state.gameConfig))) {
+  for (const square of pathSquares(token, dice, layout)) {
     const owner = walls.get(square);
     if (owner && !wallIsFriendly(state, owner, token.color)) return true;
   }
@@ -222,18 +232,20 @@ export function getLegalMoves(state: GameState, dice: number, movesOnly = false)
   const color = controllingColor(state);
   const hr = state.gameConfig.houseRules;
   const moves: LegalMove[] = [];
+  const walls = blockades(state);
+  const layout = boardLayoutOf(state.gameConfig);
   for (const token of tokensOf(state, color)) {
     if (token.state === "finished") continue;
     if (token.state === "base") {
       if (movesOnly) continue;
       if (dice === 6 || (hr.exitOnOne && dice === 1)) {
-        if (moveIsBlocked(state, token, dice)) continue;
+        if (moveIsBlockedBy(state, token, dice, walls, layout)) continue;
         moves.push({ tokenId: token.id, kind: "release" });
       }
       continue;
     }
     if (token.steps + dice > maxStepsOf(token)) continue;
-    if (moveIsBlocked(state, token, dice)) continue;
+    if (moveIsBlockedBy(state, token, dice, walls, layout)) continue;
     moves.push({ tokenId: token.id, kind: "move" });
   }
   return moves;

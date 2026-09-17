@@ -30,8 +30,16 @@ import {
 import { clearSave, loadGame, saveGame } from "./persistence";
 import { loadPreferences, preferencesOf, savePreferences } from "./local-preferences";
 import { guidanceEnabled, normalizeGuidance } from "./guidance";
-import { configureAudio, playSfx, setMusicEnabled, unlockAudio, vibrate } from "./audio";
+import {
+  configureAudio,
+  installAudioGestureHandlers,
+  playSfx,
+  setMusicEnabled,
+  unlockAudio,
+  vibrate,
+} from "./audio";
 import type { Color, GameState, HouseRules, Mode, Token } from "./types";
+import { runMovement } from "./movement-coordinator";
 
 export type Action =
   | { type: "HYDRATE"; state: GameState }
@@ -51,6 +59,13 @@ export type Action =
   | { type: "CUT_MOVE6" }
   | { type: "CUT_EXTRA_ROLL" }
   | { type: "HOP" }
+  | {
+      type: "COMPLETE_MOVE";
+      tokenId: string;
+      fromSteps: number;
+      remaining: number;
+      createdAt: number;
+    }
   | { type: "ADVANCE_FINISH"; tokenId: string }
   | { type: "FINISH_MOVE" }
   | { type: "SET_MODAL"; modal: GameState["activeModal"] }
@@ -389,6 +404,33 @@ export function gameReducer(state: GameState, action: Action): GameState {
       } else refreshTokenState(token);
       break;
     }
+    case "COMPLETE_MOVE": {
+      const pending = draft.pending;
+      const token = pending && tokenById(draft, pending.tokenId);
+      if (
+        draft.createdAt !== action.createdAt ||
+        draft.phase !== "moving" ||
+        !pending ||
+        !token ||
+        pending.tokenId !== action.tokenId ||
+        pending.remaining !== action.remaining ||
+        token.steps !== action.fromSteps
+      )
+        return state;
+      // Replay the already-authorized route in one reducer transaction. The
+      // existing HOP action remains available to tests and older callers.
+      while (pending.remaining > 0) {
+        token.steps += 1;
+        pending.remaining -= 1;
+        if (token.steps === maxStepsOf(token) && pending.remaining === 0) {
+          token.state = "home_stretch";
+          pending.finishStage = "enter";
+        } else refreshTokenState(token);
+      }
+      if (pending.finishStage === "enter") pending.finishStage = "settle";
+      finishMove(draft);
+      break;
+    }
     case "ADVANCE_FINISH": {
       if (
         draft.phase !== "moving" ||
@@ -443,10 +485,14 @@ const EMPTY = createGame(
 );
 
 export function GameProvider({ children }: { children: ReactNode }) {
+  useEffect(() => installAudioGestureHandlers(), []);
   const [state, reducerDispatch] = useReducer(gameReducer, EMPTY);
   const [ready, setReady] = useState(false);
   const [hasGame, setHasGame] = useState(false);
   const { soundOn, hapticsOn, musicOn } = state.settings;
+  const movementKey = state.pending
+    ? `${state.createdAt}:${state.pending.tokenId}:${state.pending.remaining}:${state.pending.finishStage ?? "route"}:${state.tokens.find((token) => token.id === state.pending?.tokenId)?.steps ?? -1}`
+    : "none";
   const dispatch = useCallback((action: Action) => {
     if (action.type === "RESET") {
       setHasGame(false);
@@ -487,24 +533,26 @@ export function GameProvider({ children }: { children: ReactNode }) {
     return () => setMusicEnabled(false);
   }, [state.settings.musicOn, state.settings.soundOn]);
 
-  // Hop-by-hop animation driver.
+  // The coordinator animates the complete visual route without React state
+  // updates, then commits the authorized move once.
   useEffect(() => {
     const pending = state.pending;
     if (!pending) return;
-    const reduced =
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (pending.remaining > 0) {
-      const id = window.setTimeout(
-        () => {
-          playSfx("tokenHop");
-          dispatch({ type: "HOP" });
-        },
-        reduced ? 30 : 130,
+      const token = state.tokens.find((candidate) => candidate.id === pending.tokenId);
+      if (!token) return;
+      return runMovement(state, token, pending, () =>
+        dispatch({
+          type: "COMPLETE_MOVE",
+          tokenId: token.id,
+          fromSteps: token.steps,
+          remaining: pending.remaining,
+          createdAt: state.createdAt,
+        }),
       );
-      return () => window.clearTimeout(id);
     }
     const entering = pending.finishStage === "enter";
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     const id = window.setTimeout(
       () =>
         dispatch(
@@ -513,7 +561,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       reduced ? 30 : pending.finishStage === "settle" ? 180 : 200,
     );
     return () => window.clearTimeout(id);
-  }, [state.pending, dispatch]);
+    // Preference changes are allowed during travel and must not restart it.
+    // movementKey includes every rule-bearing field used by this coordinator.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movementKey, dispatch]);
 
   const value = useMemo(
     () => ({ state, dispatch, ready, hasGame }),
