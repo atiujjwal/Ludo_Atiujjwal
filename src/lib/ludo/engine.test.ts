@@ -39,13 +39,13 @@ function turnOf(state: GameState, color: Color) {
   state.turn.actingForTeammate = false;
 }
 
-describe("blockades", () => {
-  it("detects a wall only when two same-colour tokens share a square", () => {
+describe("pass-through stacks", () => {
+  it("does not expose legacy blockade entries for stacks", () => {
     const s = game();
     place(s, "green", 0, 5);
     expect(blockades(s).size).toBe(0);
     place(s, "green", 1, 5);
-    expect(blockades(s).get(5)).toBe("green");
+    expect(blockades(s).size).toBe(0);
   });
 
   it("lists every traversed square including the destination", () => {
@@ -54,28 +54,28 @@ describe("blockades", () => {
     expect(pathSquares(token, 4)).toEqual([1, 2, 3, 4]);
   });
 
-  it("an opponent cannot land on a wall", () => {
+  it("allows an opponent to land on a stronger stack and start a contest", () => {
     const s = game();
     turnOf(s, "red");
     place(s, "red", 0, 0);
     place(s, "green", 0, 4);
     place(s, "green", 1, 4);
-    expect(moveIsBlocked(s, s.tokens[0]!, 4)).toBe(true);
-    expect(getLegalMoves(s, 4).some((m) => m.tokenId === "red-0")).toBe(false);
+    expect(moveIsBlocked(s, s.tokens[0]!, 4)).toBe(false);
+    expect(getLegalMoves(s, 4).some((m) => m.tokenId === "red-0")).toBe(true);
   });
 
-  it("an opponent cannot jump over a wall", () => {
+  it("allows an opponent to pass over a stack", () => {
     const s = game();
     turnOf(s, "red");
     place(s, "red", 0, 0);
     place(s, "green", 0, 3);
     place(s, "green", 1, 3);
-    expect(getLegalMoves(s, 5).some((m) => m.tokenId === "red-0")).toBe(false);
-    // A shorter move that stops before the wall is still fine.
+    expect(getLegalMoves(s, 5).some((m) => m.tokenId === "red-0")).toBe(true);
+    // A shorter move that stops before the stack is still fine.
     expect(getLegalMoves(s, 2).some((m) => m.tokenId === "red-0")).toBe(true);
   });
 
-  it("an opponent cannot capture into a wall", () => {
+  it("an opponent cannot immediately capture a stronger stack", () => {
     const s = game();
     const red = place(s, "red", 0, 4);
     place(s, "green", 0, 4);
@@ -84,7 +84,7 @@ describe("blockades", () => {
     expect(s.tokens.find((t) => t.id === "green-0")!.state).toBe("common");
   });
 
-  it("never treats a same-color stack on a safe square as a wall", () => {
+  it("never treats a same-color stack on a safe square as blocking", () => {
     const s = game();
     turnOf(s, "red");
     place(s, "red", 0, 6);
@@ -112,7 +112,7 @@ describe("blockades", () => {
     }
   });
 
-  it("keeps every unsafe same-color stack solid to opponents", () => {
+  it("keeps every unsafe same-color stack passable to opponents", () => {
     for (let square = 0; square < 52; square += 1) {
       if (SAFE_SQUARES.has(square)) continue;
       const s = game();
@@ -128,8 +128,8 @@ describe("blockades", () => {
       turnOf(s, moverColor);
       place(s, moverColor, 0, (square + 51) % 52);
 
-      expect(blockades(s).get(square)).toBe(ownerColor);
-      expect(getLegalMoves(s, 1).some((move) => move.tokenId === `${moverColor}-0`)).toBe(false);
+      expect(blockades(s).has(square)).toBe(false);
+      expect(getLegalMoves(s, 1).some((move) => move.tokenId === `${moverColor}-0`)).toBe(true);
     }
   });
 
@@ -137,7 +137,7 @@ describe("blockades", () => {
     const s = game();
     const green = place(s, "green", 0, 4);
     place(s, "green", 1, 4);
-    green.steps += 3; // one wall token walks away
+    green.steps += 3; // one stacked token walks away
     const red = place(s, "red", 0, 4);
     expect(blockades(s).size).toBe(0);
     expect(resolveCaptures(s, red)).toEqual(["green-1"]);
@@ -151,7 +151,7 @@ describe("blockades", () => {
     expect(resolveCaptures(s, red)).toEqual(["green-0"]);
   });
 
-  it("lets the owner pass through its own wall", () => {
+  it("lets the owner pass through its own stack", () => {
     const s = game();
     turnOf(s, "green");
     place(s, "green", 0, 20);
@@ -168,16 +168,16 @@ describe("blockades", () => {
     expect(getLegalMoves(s, 6).filter((m) => m.kind === "release")).toHaveLength(4);
   });
 
-  it("blocks the cut-reward six-jump too", () => {
+  it("allows the cut-reward six-jump across a stack", () => {
     const s = game("4P", { cutReward: true });
     turnOf(s, "red");
     place(s, "red", 0, 0);
     place(s, "green", 0, 3);
     place(s, "green", 1, 3);
-    expect(getLegalMoves(s, 6, true)).toEqual([]);
+    expect(getLegalMoves(s, 6, true)).toEqual([{ tokenId: "red-0", kind: "move" }]);
   });
 
-  it("treats a teammate wall as friendly and an enemy wall as solid in 2v2", () => {
+  it("allows passing both teammate and enemy team stacks in 2v2", () => {
     const s = game("2V2");
     turnOf(s, "red");
     place(s, "red", 0, 0);
@@ -186,15 +186,15 @@ describe("blockades", () => {
     expect(getLegalMoves(s, 5).some((m) => m.tokenId === "red-0")).toBe(true);
     place(s, "blue", 0, 4);
     place(s, "blue", 1, 4);
-    expect(getLegalMoves(s, 5).some((m) => m.tokenId === "red-0")).toBe(false);
+    expect(getLegalMoves(s, 5).some((m) => m.tokenId === "red-0")).toBe(true);
   });
 
-  it("survives a save/restore round trip", () => {
+  it("keeps legacy blockade lookup empty after a save/restore round trip", () => {
     const s = game();
     place(s, "green", 0, 5);
     place(s, "green", 1, 5);
     const restored: GameState = JSON.parse(JSON.stringify(s));
-    expect(blockades(restored).get(5)).toBe("green");
+    expect(blockades(restored).size).toBe(0);
   });
 
   it("ignores home-column squares", () => {
@@ -208,13 +208,13 @@ describe("blockades", () => {
 });
 
 describe("turn machinery", () => {
-  it("has no legal move when every option is walled, so the turn can pass", () => {
+  it("retains legal moves when an enemy stack is ahead", () => {
     const s = game();
     turnOf(s, "red");
     place(s, "red", 0, 0);
     place(s, "green", 0, 1);
     place(s, "green", 1, 1);
-    expect(getLegalMoves(s, 3)).toEqual([]);
+    expect(getLegalMoves(s, 3)).toEqual([{ tokenId: "red-0", kind: "move" }]);
   });
 
   it("resets dice and six-streak when the turn advances", () => {

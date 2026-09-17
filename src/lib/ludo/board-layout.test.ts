@@ -182,7 +182,7 @@ describe("all ordered two-player colours share diagonal geometry", () => {
   );
 
   it.each(pairs)(
-    "$first/$second captures, safe stacks and blockades use physical shared squares",
+    "$first/$second captures, safe stacks and contests use physical shared squares",
     ({ first, second }) => {
       let state = game(first, second);
       const firstToken = place(state, first, 0, 5);
@@ -206,12 +206,12 @@ describe("all ordered two-player colours share diagonal geometry", () => {
           (p) => p.key === `${TRACK[8]!.row},${TRACK[8]!.col}`,
         ),
       ).toHaveLength(3);
-      const wall = game(first, second);
-      place(wall, first, 0, 5);
-      place(wall, second, 0, 6);
-      place(wall, second, 1, 6);
-      expect(blockades(wall).get(6)).toBe(second);
-      expect(getLegalMoves(wall, 1)).toEqual([]);
+      const stacked = game(first, second);
+      place(stacked, first, 0, 5);
+      place(stacked, second, 0, 6);
+      place(stacked, second, 1, 6);
+      expect(blockades(stacked).has(6)).toBe(false);
+      expect(getLegalMoves(stacked, 1).map((move) => move.tokenId)).toContain(`${first}-0`);
     },
   );
 
@@ -287,7 +287,7 @@ it("recovers invalid saved choices without losing reward rolls or incrementing s
   expect(normal.turn.currentPlayerId).toBe("p-blue");
 });
 
-it("revalidates a saved lap choice obstructed by a newly positioned blockade", () => {
+it("keeps a saved lap choice valid when a stack occupies its route", () => {
   const state = game("green", "blue");
   const token = place(state, "green", 0, 50);
   place(state, "blue", 0, 51);
@@ -296,7 +296,7 @@ it("revalidates a saved lap choice obstructed by a newly positioned blockade", (
   state.activeModal = "SECOND_LAP_CHOICE";
   state.turn.diceValue = 1;
   state.modalContext = { tokenId: token.id, dice: 1, isReward: false };
-  expect(canContinueSecondLap(state, token, 1)).toBe(false);
+  expect(canContinueSecondLap(state, token, 1)).toBe(true);
   const restored = gameReducer(state, { type: "HYDRATE", state });
   expect(restored.activeModal).toBe("SECOND_LAP_CHOICE");
   expect(getLegalMoves(restored, 1).map((m) => m.tokenId)).toContain(token.id);

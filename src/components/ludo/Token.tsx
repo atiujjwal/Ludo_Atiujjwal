@@ -3,8 +3,7 @@ import { APPEARANCE, COUNTER_COLORS, type TokenSkin } from "@/lib/ludo/theme";
 import { cn } from "@/lib/utils";
 import type { Color } from "@/lib/ludo/types";
 
-export type TokenVisualState =
-  "idle" | "selectable" | "moving" | "walled" | "home" | "ghost" | "safe";
+export type TokenVisualState = "idle" | "selectable" | "moving" | "home" | "ghost" | "safe";
 interface Props {
   color: Color;
   visual?: TokenVisualState;

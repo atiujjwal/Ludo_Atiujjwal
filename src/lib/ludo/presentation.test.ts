@@ -16,6 +16,7 @@ import {
   maxStepsOf,
 } from "./board";
 import { createGame, DEFAULT_HOUSE_RULES, getLegalMoves } from "./engine";
+import { resolveContestLanding } from "./contests";
 import { destinations, stackPlacement } from "./presentation";
 import type { Color, GameState } from "./types";
 
@@ -67,21 +68,20 @@ describe("authoritative destination previews", () => {
       expect(destinations(state)).toEqual([]);
     },
   );
-  it("only offers the optional lap when its full path is legal", () => {
+  it("offers the optional lap even when its route passes through a stack", () => {
     const state = selecting();
     const red = place(state, "red", 0, 50);
     expect(destinations(state)).toHaveLength(2);
     const alternative = destinations(state).find((p) => p.alternative)!;
     expect(alternative.cell).toEqual(cellForToken({ ...red, steps: 51, lap: 1 }, 0));
     place(state, "green", 0, 38);
-    place(state, "green", 1, 38); // absolute 51: only the optional route crosses this wall
-    expect(destinations(state)).toEqual([
-      { tokenId: "red-0", cell: HOME_COLUMN.red[0], alternative: false },
-    ]);
+    place(state, "green", 1, 38); // absolute 51: only the optional route crosses this stack
+    expect(destinations(state)).toHaveLength(2);
+    expect(destinations(state).some((preview) => preview.alternative)).toBe(true);
     state.gameConfig.houseRules.secondLap = false;
     expect(destinations(state)).toHaveLength(1);
   });
-  it("keeps safe stacks legal, but removes previews behind unsafe blockades", () => {
+  it("keeps previews legal for safe and unsafe stacks", () => {
     const state = selecting();
     place(state, "red", 0, 7);
     place(state, "green", 0, (8 - START_OFFSET.green + 52) % 52);
@@ -89,7 +89,7 @@ describe("authoritative destination previews", () => {
     expect(SAFE_SQUARES.has(8)).toBe(true);
     expect(destinations(state)).toEqual([{ tokenId: "red-0", cell: TRACK[8], alternative: false }]);
     state.tokens.filter((t) => t.state === "common").forEach((t) => t.steps++);
-    expect(destinations(state)).toEqual([]);
+    expect(destinations(state)).toEqual([{ tokenId: "red-0", cell: TRACK[9], alternative: false }]);
   });
   it("hides previews during motion and dialogs and uses six for reward moves", () => {
     const state = selecting();
@@ -105,6 +105,18 @@ describe("authoritative destination previews", () => {
 });
 
 describe("royal board rendering and accessible selection", () => {
+  it("renders a contested stack with defender and challenger pips", () => {
+    const state = selecting("green", 1);
+    place(state, "red", 0, 5);
+    place(state, "red", 1, 5);
+    const challenger = place(state, "green", 0, (5 - START_OFFSET.green + 52) % 52);
+    expect(resolveContestLanding(state, challenger, "p-green")).toBeNull();
+    const html = renderBoard(state);
+    expect(html).toContain("royal-contest-outline");
+    expect(html).toContain("Contested stack: 2 defending, 1 attacking");
+    expect(html).toContain('data-role="defender"');
+    expect(html).toContain('data-role="attacker"');
+  });
   it("retains 52 shared cells, 20 home cells, 16 yard slots and the central goal", () => {
     const html = renderToStaticMarkup(createElement(BoardArtwork));
     expect(html.match(/class="royal-cell /g)).toHaveLength(72);
@@ -155,13 +167,13 @@ describe("royal board rendering and accessible selection", () => {
     expect(html).toContain('data-alternative="true"');
     expect(html).toContain("royal-route-legend");
     expect(JSON.stringify(state)).toBe(before);
-    // The alternative is blocked, but normal home entry remains legal.
+    // Occupancy never hides either legal route.
     place(state, "green", 0, 38);
     place(state, "green", 1, 38);
-    const blocked = renderBoard(state);
-    expect(blocked.match(/class="royal-destination"/g)).toHaveLength(1);
-    expect(blocked).not.toContain('data-alternative="true"');
-    expect(blocked).not.toContain("royal-route-legend");
+    const stacked = renderBoard(state);
+    expect(stacked.match(/class="royal-destination"/g)).toHaveLength(2);
+    expect(stacked).toContain('data-alternative="true"');
+    expect(stacked).toContain("royal-route-legend");
     state.phase = "moving";
     expect(renderBoard(state)).not.toContain("royal-destination");
     state.phase = "select";

@@ -23,7 +23,7 @@ export function useRankFeedback(state: GameState, ready: boolean) {
       finalCelebration.current?.dispose();
       identity.current = state.createdAt;
       wasOver.current = state.phase === "over";
-      previousCapture.current = state.lastCapture?.id;
+      previousCapture.current = state.captureEvents?.at(-1)?.id ?? state.lastCapture?.id;
       setResultsReady(state.phase === "over");
       finalCelebration.current = createFinalCelebration(() => setResultsReady(true), visible);
       tracker.current = createRankFeedback(
@@ -59,12 +59,13 @@ export function useRankFeedback(state: GameState, ready: boolean) {
       tracker.current.update(assignments);
       return;
     }
-    if (state.lastCapture && previousCapture.current !== state.lastCapture.id) {
-      const affected = new Set(state.lastCapture.tokens.map((token) => token.color));
-      if (state.lastCapture.cutterColor) affected.add(state.lastCapture.cutterColor);
+    const captures = state.captureEvents ?? (state.lastCapture ? [state.lastCapture] : []);
+    for (const capture of captures.filter((event) => event.id > (previousCapture.current ?? 0))) {
+      const affected = new Set(capture.tokens.map((token) => token.color));
+      if (capture.cutterColor) affected.add(capture.cutterColor);
       for (const color of affected) homeTracker.current?.cancel(color);
     }
-    previousCapture.current = state.lastCapture?.id;
+    previousCapture.current = captures.at(-1)?.id;
     homeTracker.current?.update(state.tokens);
     // Final standings celebrate every house, including ranks that finished earlier.
     const isFinal = !wasOver.current && state.phase === "over";

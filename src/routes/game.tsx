@@ -31,7 +31,7 @@ export const Route = createFileRoute("/game")({
       {
         name: "description",
         content:
-          "The Ludo board: roll the dice, move your pieces, form blockades, cut opponents and race all four pieces home.",
+          "The Ludo board: roll the dice, build and challenge stacks, cut opponents and race all four pieces home.",
       },
       { property: "og:title", content: "Playing Ludo — Offline Board Game" },
       {
@@ -146,7 +146,8 @@ function GameScreen() {
   const lastCaptureId = useRef<number | undefined>(undefined);
   const captureReady = useRef(false);
   useEffect(() => {
-    const cap = state.lastCapture;
+    const captures = state.captureEvents ?? (state.lastCapture ? [state.lastCapture] : []);
+    const cap = captures.at(-1);
     if (!gameReady) {
       captureReady.current = false;
       return;
@@ -157,12 +158,12 @@ function GameScreen() {
       return;
     }
     if (!cap) lastCaptureId.current = undefined;
-    if (cap && cap.id !== lastCaptureId.current) {
+    if (cap && cap.id > (lastCaptureId.current ?? 0)) {
       lastCaptureId.current = cap.id;
       playSfx("tokenCut");
       vibrate([18, 50, 26]);
     }
-  }, [state.lastCapture, gameReady]);
+  }, [state.captureEvents, state.lastCapture, gameReady]);
 
   useEffect(() => {
     if (state.activeModal === "GAME_OVER") playSfx("gameWin");

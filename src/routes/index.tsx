@@ -21,7 +21,7 @@ export const Route = createFileRoute("/")({
       {
         property: "og:description",
         content:
-          "Play Ludo with friends on one phone. Real blockade rules, four house rules, 2v2 teams, works completely offline.",
+          "Play Ludo with friends on one phone. Contested stack rules, four house rules, 2v2 teams, works completely offline.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

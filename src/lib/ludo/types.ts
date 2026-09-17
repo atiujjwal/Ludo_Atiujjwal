@@ -42,6 +42,8 @@ export interface Turn {
   diceValue: number | null;
   consecutiveSixes: number;
   owedExtraRoll: boolean;
+  /** A deferred capture bonus is being played before this player's normal turn. */
+  normalTurnPending?: boolean;
 }
 
 export type ModalKind = "NONE" | "SECOND_LAP_CHOICE" | "CUT_REWARD" | "EXIT_CONFIRM" | "GAME_OVER";
@@ -58,6 +60,10 @@ export interface Pending {
   remaining: number;
   isReward: boolean;
   finishStage?: "enter" | "settle";
+  /** Shared-track origin, retained until the atomic move commit reconciles it. */
+  originSquare?: number | null;
+  /** Player controlling this token when the move began (important in 2v2). */
+  actorPlayerId?: string;
 }
 
 export interface Settings {
@@ -80,6 +86,26 @@ export interface CaptureEvent {
   tokens: { id: string; color: Color }[];
 }
 
+export type ContestSide = Color | TeamId;
+
+export interface ContestArrival {
+  tokenId: string;
+  side: ContestSide;
+  /** Player who controlled this arrival; may differ from token colour in 2v2. */
+  playerId: string;
+}
+
+export interface TrackContest {
+  defenderSide: ContestSide;
+  /** Oldest to newest. Counts are always derived from live token occupancy. */
+  attackerArrivals: ContestArrival[];
+}
+
+export interface DeferredCaptureReward {
+  captureId: number;
+  playerId: string;
+}
+
 export interface GameState {
   schemaVersion: 1;
   /** Absent in legacy saves whose private lane had six cells. */
@@ -99,6 +125,12 @@ export interface GameState {
   winnerTeam: TeamId | null;
   /** Presentation only — never read by rule code. */
   lastCapture?: CaptureEvent | null;
+  /** Bounded presentation log; consumers seed IDs on resume and never replay it. */
+  captureEvents?: CaptureEvent[];
+  /** Unsafe shared-track contests keyed by absolute square. */
+  trackContests?: Record<string, TrackContest>;
+  /** FIFO rewards created when a defender departure resolves a contest out of turn. */
+  deferredCaptureRewards?: DeferredCaptureReward[];
   settings: Settings;
 
   createdAt: number;

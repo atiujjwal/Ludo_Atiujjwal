@@ -3,6 +3,7 @@ import { normalizeGuidance } from "./guidance";
 import { normalizeHomePath } from "./home-path-migration";
 import { maxStepsOf } from "./board";
 import { reportStorageFailure } from "./local-preferences";
+import { normalizeContests } from "./contests";
 
 const KEY = "ludo:save:v1";
 
@@ -45,7 +46,7 @@ export function loadGame(): GameState | null {
       window.localStorage.removeItem(KEY);
       return null;
     }
-    const state = normalizeHomePath(parsed);
+    const state = normalizeContests(normalizeHomePath(parsed));
     state.settings = normalizeGuidance(state.settings);
     // Never restore mid-animation or mid-roll.
     if (state.pending) {

@@ -46,7 +46,7 @@ export function createCaptureFeedback(
         lastId = undefined;
         return;
       }
-      if (event.id === lastId) return;
+      if (lastId !== undefined && event.id <= lastId) return;
       lastId = event.id;
       for (const color of new Set(event.tokens.map((token) => token.color)))
         start(color, event.id, "victim", 0);

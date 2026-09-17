@@ -190,7 +190,7 @@ describe("gameplay matrix: complete legal move generation", () => {
   });
 });
 
-describe("gameplay matrix: path, safe cells, captures, and blockades", () => {
+describe("gameplay matrix: path, safe cells, captures, and stacks", () => {
   it("moves into the home lane and preserves the expected board state", () => {
     const state = game();
     placeAtSteps(state, "red", 0, 50);
@@ -266,13 +266,13 @@ describe("gameplay matrix: path, safe cells, captures, and blockades", () => {
     expect(token(moved, "yellow", 0).state).toBe("common");
   });
 
-  it("blocks both landing on and passing through an enemy blockade", () => {
+  it("allows both landing on and passing through an enemy stack", () => {
     const state = game();
     placeAt(state, "red", 0, 0);
     placeAt(state, "green", 0, 3);
     placeAt(state, "green", 1, 3);
-    expect(legalIds(state, 3)).not.toContain("red-0");
-    expect(legalIds(state, 5)).not.toContain("red-0");
+    expect(legalIds(state, 3)).toContain("red-0");
+    expect(legalIds(state, 5)).toContain("red-0");
     expect(legalIds(state, 2)).toContain("red-0");
   });
 });
@@ -422,14 +422,14 @@ describe("gameplay matrix: custom-rule combinations", () => {
     });
   });
 
-  it("disables a Second Lap route that crosses an enemy blockade", () => {
+  it("allows a Second Lap route that crosses an enemy stack", () => {
     const state = game("4P", { secondLap: true });
     placeAtSteps(state, "red", 0, 50);
     placeAt(state, "green", 0, 1);
     placeAt(state, "green", 1, 1);
     const rolled = roll(state, 3);
-    expect(canContinueSecondLap(rolled, token(rolled, "red", 0), 3)).toBe(false);
-    expect(reduce(rolled, { type: "CHOOSE_CONTINUE_LAP" })).toBe(rolled);
+    expect(canContinueSecondLap(rolled, token(rolled, "red", 0), 3)).toBe(true);
+    expect(reduce(rolled, { type: "CHOOSE_CONTINUE_LAP" })).not.toBe(rolled);
 
     const entered = completePendingMove(reduce(rolled, { type: "CHOOSE_ENTER_HOME" }));
     expect(token(entered, "red", 0)).toMatchObject({ steps: 53, state: "home_stretch" });

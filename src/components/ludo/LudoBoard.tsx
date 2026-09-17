@@ -15,7 +15,8 @@ import {
   geometryColor,
   isOnCommon,
 } from "@/lib/ludo/board";
-import { blockades, getLegalMoves } from "@/lib/ludo/engine";
+import { getLegalMoves } from "@/lib/ludo/engine";
+import { analyzeTrackCell, contestSide } from "@/lib/ludo/contests";
 import { destinations, positionTokens } from "@/lib/ludo/presentation";
 import { APPEARANCE, type BoardTheme, type TokenSkin } from "@/lib/ludo/theme";
 import type { Color, GameState } from "@/lib/ludo/types";
@@ -58,7 +59,6 @@ export function LudoBoard({
   tokenSkin = APPEARANCE.token,
 }: Props) {
   const layout = useMemo(() => boardLayoutOf(state.gameConfig), [state.gameConfig]);
-  const walls = useMemo(() => blockades(state), [state]);
   const moves = useMemo(
     () =>
       state.phase === "select" && state.activeModal === "NONE"
@@ -79,6 +79,13 @@ export function LudoBoard({
   const stacks = new Map(
     positioned.filter((item) => item.count > 1).map((item) => [item.key, item]),
   );
+  const stackAnalysis = new Map(
+    Array.from(stacks, ([key, item]) => {
+      if (!isOnCommon(item.token)) return [key, null] as const;
+      const square = absoluteIndex(item.token.color, item.token.steps, layout);
+      return [key, analyzeTrackCell(state, square)] as const;
+    }),
+  );
 
   return (
     <div className="royal-board-group">
@@ -98,14 +105,6 @@ export function LudoBoard({
               }}
             />
           ))}
-          {Array.from(walls.keys()).map((square) => (
-            <div
-              key={square}
-              className="royal-blockade"
-              aria-hidden
-              style={cellStyle(TRACK[square]!)}
-            />
-          ))}
           {previews.map((preview) => (
             <div
               key={`${preview.tokenId}-${preview.alternative}`}
@@ -115,24 +114,52 @@ export function LudoBoard({
               style={cellStyle(preview.cell)}
             />
           ))}
-          {Array.from(stacks, ([key, item]) => (
-            <div
-              key={key}
-              className="royal-stack-outline"
-              data-protected={
-                isOnCommon(item.token) &&
-                SAFE_SQUARES.has(absoluteIndex(item.token.color, item.token.steps, layout))
-              }
-              aria-hidden
-              style={cellStyle(item.cell)}
-            />
-          ))}
+          {Array.from(stacks, ([key, item]) => {
+            const analysis = stackAnalysis.get(key);
+            const contested = Boolean(analysis?.contest && analysis.attackers.length > 0);
+            if (!contested)
+              return (
+                <div
+                  key={key}
+                  className="royal-stack-outline"
+                  data-protected={Boolean(analysis?.safe)}
+                  aria-hidden
+                  style={cellStyle(item.cell)}
+                />
+              );
+            const label = `Contested stack: ${analysis!.defenders.length} defending, ${analysis!.attackers.length} attacking`;
+            return (
+              <div
+                key={key}
+                className="royal-contest-outline"
+                role="img"
+                aria-label={label}
+                style={cellStyle(item.cell)}
+              >
+                <span className="royal-contest-pips" data-role="defender">
+                  {analysis!.defenders.map((token) => (
+                    <i key={token.id} style={colorStyle(token.color)} />
+                  ))}
+                </span>
+                <span className="royal-contest-pips" data-role="attacker">
+                  {analysis!.attackers.map((token) => (
+                    <i key={token.id} style={colorStyle(token.color)} />
+                  ))}
+                </span>
+              </div>
+            );
+          })}
           {positioned.map((item) => {
             const { token, slot } = item;
             const legal = selectable.has(token.id);
             const square = isOnCommon(token) ? absoluteIndex(token.color, token.steps, layout) : -1;
             const safe = SAFE_SQUARES.has(square);
-            const walled = walls.has(square);
+            const analysis = stackAnalysis.get(item.key);
+            const role = analysis?.contest
+              ? contestSide(state, token.color) === analysis.contest.defenderSide
+                ? "defender"
+                : "challenger"
+              : null;
             const moving = state.phase === "moving" && state.pending?.tokenId === token.id;
             const visual =
               token.state === "finished"
@@ -141,11 +168,9 @@ export function LudoBoard({
                   ? "moving"
                   : legal
                     ? "selectable"
-                    : walled
-                      ? "walled"
-                      : safe
-                        ? "safe"
-                        : "idle";
+                    : safe
+                      ? "safe"
+                      : "idle";
             return (
               <BoardPiece
                 key={token.id}
@@ -156,7 +181,7 @@ export function LudoBoard({
                 visual={visual}
                 skin={tokenSkin}
                 onSelect={onSelect}
-                label={`${token.color} piece ${slot + 1}${token.state === "finished" ? ", finished" : walled ? ", blockade" : safe ? ", protected" : ""}${legal ? ", can move" : ""}`}
+                label={`${token.color} piece ${slot + 1}${token.state === "finished" ? ", finished" : role ? `, contest ${role}` : safe ? ", protected" : ""}${legal ? ", can move" : ""}`}
               />
             );
           })}
@@ -164,7 +189,7 @@ export function LudoBoard({
             key={state.createdAt}
             matchId={state.createdAt}
             layout={layout}
-            capture={state.lastCapture ?? null}
+            captures={state.captureEvents ?? (state.lastCapture ? [state.lastCapture] : [])}
             celebrate={celebrate ?? null}
             rankEffects={rankEffects}
             onRankLoaded={onRankLoaded}

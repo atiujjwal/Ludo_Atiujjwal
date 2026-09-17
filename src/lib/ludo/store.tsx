@@ -9,8 +9,9 @@ import {
   type ReactNode,
 } from "react";
 
-import { junctionOf, maxStepsOf } from "./board";
+import { absoluteIndex, boardLayoutOf, isOnCommon, junctionOf, maxStepsOf } from "./board";
 import { normalizeHomePath } from "./home-path-migration";
+import { normalizeContests, resolveContestDeparture } from "./contests";
 import {
   advanceTurn,
   canContinueSecondLap,
@@ -21,7 +22,7 @@ import {
   getLegalMoves,
   playerById,
   refreshTokenState,
-  resolveCaptures,
+  resolveCapture,
   rollDie,
   tokensOf,
   triggersSecondLap,
@@ -87,6 +88,41 @@ function tokenById(state: Draft, id: string): Token {
   return state.tokens.find((t) => t.id === id)!;
 }
 
+function resetSamePlayerToIdle(state: Draft) {
+  state.turn.diceValue = null;
+  state.turn.consecutiveSixes = 0;
+  state.turn.owedExtraRoll = false;
+  state.legalMoves = [];
+  state.pending = null;
+  state.rewardMove = false;
+  state.activeModal = "NONE";
+  state.modalContext = {};
+  state.phase = "idle";
+}
+
+/** Start the oldest queued capture reward for the current player. */
+function beginDeferredCaptureBonus(state: Draft): boolean {
+  if (state.phase === "over") return false;
+  const rewards = (state.deferredCaptureRewards ??= []);
+  const index = rewards.findIndex((reward) => reward.playerId === state.turn.currentPlayerId);
+  if (index < 0) return false;
+  const [reward] = rewards.splice(index, 1);
+  resetSamePlayerToIdle(state);
+  state.turn.normalTurnPending = true;
+  note(state, "A contested stack broke — take your saved capture bonus.");
+  if (state.gameConfig.houseRules.cutReward) {
+    state.turn.owedExtraRoll = true;
+    state.phase = "modal";
+    state.activeModal = "CUT_REWARD";
+    state.modalContext = { deferred: true, captureId: reward!.captureId };
+  }
+  return true;
+}
+
+function queueDeferredCapture(state: Draft, captureId: number, playerId: string) {
+  (state.deferredCaptureRewards ??= []).push({ captureId, playerId });
+}
+
 function endOrContinueTurn(state: Draft) {
   if (state.phase === "over") return;
   const currentPlayer = playerById(state, state.turn.currentPlayerId);
@@ -99,24 +135,35 @@ function endOrContinueTurn(state: Draft) {
     state.phase = "idle";
     return;
   }
+  if (state.turn.normalTurnPending) {
+    if (beginDeferredCaptureBonus(state)) return;
+    state.turn.normalTurnPending = false;
+    resetSamePlayerToIdle(state);
+    note(state, "Your regular turn starts now.");
+    return;
+  }
   advanceTurn(state);
+  beginDeferredCaptureBonus(state);
 }
 
 function beginMove(state: Draft, tokenId: string, dice: number, isReward: boolean) {
   const token = tokenById(state, tokenId);
+  const originSquare = isOnCommon(token)
+    ? absoluteIndex(token.color, token.steps, boardLayoutOf(state.gameConfig))
+    : null;
+  const actorPlayerId = state.turn.currentPlayerId;
   if (token.state === "base") {
     token.state = "common";
     token.steps = 0;
     token.lap = 0;
-    resolveCaptures(state, token);
     state.legalMoves = [];
     state.phase = "moving";
-    state.pending = { tokenId, remaining: 0, isReward };
+    state.pending = { tokenId, remaining: 0, isReward, originSquare, actorPlayerId };
     return;
   }
   state.legalMoves = [];
   state.phase = "moving";
-  state.pending = { tokenId, remaining: dice, isReward };
+  state.pending = { tokenId, remaining: dice, isReward, originSquare, actorPlayerId };
 }
 
 function startMoveOrAsk(state: Draft, tokenId: string, dice: number, isReward: boolean) {
@@ -146,7 +193,7 @@ function noLegalRoll(state: Draft, dice: number) {
   } else {
     note(state, `No legal move for a ${dice} — turn skipped.`);
     state.turn.owedExtraRoll = false;
-    advanceTurn(state);
+    endOrContinueTurn(state);
   }
 }
 
@@ -159,6 +206,7 @@ function evaluateRoll(state: Draft, dice: number) {
     note(state, "Three sixes in a row — turn skipped!");
     state.turn.owedExtraRoll = false;
     advanceTurn(state);
+    beginDeferredCaptureBonus(state);
     return;
   }
 
@@ -182,7 +230,10 @@ function finishMove(state: Draft) {
   const token = tokenById(state, pending.tokenId);
   refreshTokenState(token);
 
-  const captured = resolveCaptures(state, token);
+  const departure = resolveContestDeparture(state, pending.originSquare);
+  if (departure) queueDeferredCapture(state, departure.event.id, departure.creditedPlayerId);
+  const capture = resolveCapture(state, token, pending.actorPlayerId);
+  const captured = capture?.captured ?? [];
   const reachedHome = token.state === "finished";
   const hr = state.gameConfig.houseRules;
   const dice = state.turn.diceValue ?? 0;
@@ -229,7 +280,7 @@ function finishMove(state: Draft) {
 
 export function gameReducer(state: GameState, action: Action): GameState {
   if (action.type === "HYDRATE") {
-    const hydrated = normalizeHomePath(structuredClone(action.state));
+    const hydrated = normalizeContests(normalizeHomePath(structuredClone(action.state)));
     hydrated.settings = normalizeGuidance(hydrated.settings);
     const savedReward =
       hydrated.activeModal === "CUT_REWARD" ||
@@ -361,7 +412,7 @@ export function gameReducer(state: GameState, action: Action): GameState {
       baseToken.steps = 0;
       baseToken.lap = 0;
       baseToken.secondLapUsed = false;
-      resolveCaptures(draft, baseToken);
+      resolveCapture(draft, baseToken, draft.turn.currentPlayerId);
       draft.phase = "idle";
       endOrContinueTurn(draft);
       break;

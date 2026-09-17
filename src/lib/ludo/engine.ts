@@ -20,6 +20,7 @@ import type {
   TeamId,
   Token,
 } from "./types";
+import { resolveContestLanding, type ContestResolution } from "./contests";
 
 export const MODE_COLORS: Record<Mode, Color[]> = {
   "2P": ["red", "yellow"],
@@ -113,6 +114,9 @@ export function createGame(
     messageId: 0,
     rewardMove: false,
     winnerTeam: null,
+    captureEvents: [],
+    trackContests: {},
+    deferredCaptureRewards: [],
     settings: {
       soundOn: true,
       hapticsOn: true,
@@ -158,34 +162,13 @@ export function areTeammates(state: GameState, a: Color, b: Color): boolean {
   return state.gameConfig.mode === "2V2" && TEAMS[a] === TEAMS[b];
 }
 
-/**
- * Squares of the shared loop holding two or more tokens of the same colour.
- * On unsafe squares this forms a blockade ("wall"): impassable and
- * uncapturable for anyone who is not the owner (or the owner's 2v2 teammate).
- * Safe squares allow opposing pieces to coexist, so stacks there never form
- * walls.
- */
+/** @deprecated Stacks no longer block movement. Retained for older internal callers. */
 export function blockades(state: GameState): Map<number, Color> {
-  const layout = boardLayoutOf(state.gameConfig);
-  const counts = new Map<number, Map<Color, number>>();
-  for (const token of state.tokens) {
-    if (!isOnCommon(token)) continue;
-    const index = absoluteIndex(token.color, token.steps, layout);
-    if (SAFE_SQUARES.has(index)) continue;
-    const byColor = counts.get(index) ?? new Map<Color, number>();
-    byColor.set(token.color, (byColor.get(token.color) ?? 0) + 1);
-    counts.set(index, byColor);
-  }
-  const walls = new Map<number, Color>();
-  for (const [index, byColor] of counts) {
-    for (const [color, n] of byColor) {
-      if (n >= 2) walls.set(index, color);
-    }
-  }
-  return walls;
+  void state;
+  return new Map();
 }
 
-/** True when `color` may pass through / land on a wall owned by `owner`. */
+/** True when two colours belong to the same non-capturing side. */
 export function wallIsFriendly(state: GameState, owner: Color, color: Color): boolean {
   return owner === color || areTeammates(state, owner, color);
 }
@@ -206,24 +189,11 @@ export function pathSquares(token: Token, dice: number, layout = DEFAULT_BOARD_L
   return squares;
 }
 
-/** A move is blocked when any traversed square (or the destination) is an enemy wall. */
+/** @deprecated Occupied shared cells never block movement or landing. */
 export function moveIsBlocked(state: GameState, token: Token, dice: number): boolean {
-  const walls = blockades(state);
-  return moveIsBlockedBy(state, token, dice, walls, boardLayoutOf(state.gameConfig));
-}
-
-function moveIsBlockedBy(
-  state: GameState,
-  token: Token,
-  dice: number,
-  walls: Map<number, Color>,
-  layout = boardLayoutOf(state.gameConfig),
-): boolean {
-  if (walls.size === 0) return false;
-  for (const square of pathSquares(token, dice, layout)) {
-    const owner = walls.get(square);
-    if (owner && !wallIsFriendly(state, owner, token.color)) return true;
-  }
+  void state;
+  void token;
+  void dice;
   return false;
 }
 
@@ -232,20 +202,16 @@ export function getLegalMoves(state: GameState, dice: number, movesOnly = false)
   const color = controllingColor(state);
   const hr = state.gameConfig.houseRules;
   const moves: LegalMove[] = [];
-  const walls = blockades(state);
-  const layout = boardLayoutOf(state.gameConfig);
   for (const token of tokensOf(state, color)) {
     if (token.state === "finished") continue;
     if (token.state === "base") {
       if (movesOnly) continue;
       if (dice === 6 || (hr.exitOnOne && dice === 1)) {
-        if (moveIsBlockedBy(state, token, dice, walls, layout)) continue;
         moves.push({ tokenId: token.id, kind: "release" });
       }
       continue;
     }
     if (token.steps + dice > maxStepsOf(token)) continue;
-    if (moveIsBlockedBy(state, token, dice, walls, layout)) continue;
     moves.push({ tokenId: token.id, kind: "move" });
   }
   return moves;
@@ -265,46 +231,21 @@ export function triggersSecondLap(state: GameState, token: Token, dice: number):
 export function canContinueSecondLap(state: GameState, token: Token, dice: number): boolean {
   if (!triggersSecondLap(state, token, dice)) return false;
   const continued = { ...token, lap: token.lap + 1, secondLapUsed: true };
-  return continued.steps + dice <= maxStepsOf(continued) && !moveIsBlocked(state, continued, dice);
+  return continued.steps + dice <= maxStepsOf(continued);
 }
 
 /** Apply captures caused by `token` landing. Returns captured token ids. */
 export function resolveCaptures(state: GameState, token: Token): string[] {
-  if (!isOnCommon(token)) return [];
-  const layout = boardLayoutOf(state.gameConfig);
-  const index = absoluteIndex(token.color, token.steps, layout);
-  if (SAFE_SQUARES.has(index)) return [];
+  return resolveCapture(state, token)?.captured ?? [];
+}
 
-  const captured: string[] = [];
-  const victims: { id: string; color: Color }[] = [];
-  for (const color of COLOR_ORDER) {
-    if (color === token.color) continue;
-    if (areTeammates(state, color, token.color)) continue;
-    const occupants = state.tokens.filter(
-      (t) =>
-        t.color === color && isOnCommon(t) && absoluteIndex(t.color, t.steps, layout) === index,
-    );
-    // A stack of two or more same-color tokens is immune.
-    if (occupants.length === 1) {
-      const victim = occupants[0]!;
-      victim.state = "base";
-      victim.steps = 0;
-      victim.lap = 0;
-      victim.secondLapUsed = false;
-      captured.push(victim.id);
-      victims.push({ id: victim.id, color: victim.color });
-    }
-  }
-  // Presentation-only breadcrumb so the UI can walk the beaten pieces home.
-  if (victims.length > 0) {
-    state.lastCapture = {
-      id: (state.lastCapture?.id ?? 0) + 1,
-      square: index,
-      tokens: victims,
-      cutterColor: token.color,
-    };
-  }
-  return captured;
+/** Detailed destination resolution for the reducer; animation never owns these rules. */
+export function resolveCapture(
+  state: GameState,
+  token: Token,
+  playerId = state.turn.currentPlayerId,
+): ContestResolution | null {
+  return resolveContestLanding(state, token, playerId);
 }
 
 /**
@@ -398,6 +339,7 @@ export function advanceTurn(state: GameState): void {
   state.turn.diceValue = null;
   state.turn.consecutiveSixes = 0;
   state.turn.owedExtraRoll = false;
+  state.turn.normalTurnPending = false;
   state.turn.actingForTeammate =
     controllingColor(state) !== playerById(state, state.turn.currentPlayerId).color;
   state.legalMoves = [];

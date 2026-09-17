@@ -3,7 +3,7 @@
 ## Bottlenecks found
 
 - Every visual cell hop cloned the complete game state, updated the shared context and reran board-level derivations. A six-cell move required at least six logical commits plus completion.
-- Legal-move rendering recalculated blockades for each candidate and destination previews recalculated the same legal moves.
+- Legal-move rendering recalculated shared-track occupancy for each candidate and destination previews recalculated the same legal moves.
 - Dice state recreated the game-screen roll callback and rerendered inactive player cards. Initial dice/token feedback waited for the throttled React commit.
 - Animated feedback had no response to sustained frame loss. Its first decode could also occur on the incident input path.
 - The repeatable 6×-CPU profile is highly variable. Baseline cold launches contained 11–15 second outliers; final samples still contain 10.8–13.6 second outliers. The final trace separates hydration from offline-readiness work.

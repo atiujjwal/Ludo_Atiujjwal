@@ -15,14 +15,14 @@ import type { RankCat } from "@/lib/ludo/cat-effects";
 
 /** Brief, CSS-only feedback; never owns a gameplay timer. */
 export function BoardEffects({
-  capture,
+  captures = [],
   celebrate,
   rankEffects,
   onRankLoaded,
   matchId = 0,
   layout = DEFAULT_BOARD_LAYOUT,
 }: {
-  capture?: CaptureEvent | null;
+  captures?: CaptureEvent[];
   celebrate?: { color: Color; id: number } | null;
   rankEffects?: Partial<Record<Color, RankCat>> | undefined;
   onRankLoaded?: ((color: Color, session: number) => void) | undefined;
@@ -31,7 +31,7 @@ export function BoardEffects({
 }) {
   const [cats, setCats] = useState<Partial<Record<Color, CaptureCat>>>({});
   const [feedback] = useState(() =>
-    createCaptureFeedback(capture?.id, {
+    createCaptureFeedback(captures.at(-1)?.id, {
       show: (color, entry) => setCats((previous) => ({ ...previous, [color]: entry })),
       hide: (color) =>
         setCats((previous) => {
@@ -41,7 +41,9 @@ export function BoardEffects({
         }),
     }),
   );
-  useEffect(() => feedback.update(capture), [capture, feedback]);
+  useEffect(() => {
+    for (const capture of captures) feedback.update(capture);
+  }, [captures, feedback]);
   useEffect(() => {
     // A resolved rank takes precedence over any older capture in this house.
     for (const color of Object.keys(rankEffects ?? {}) as Color[]) feedback.cancel(color);
@@ -85,12 +87,15 @@ export function BoardEffects({
           />
         </div>
       ))}
-      {capture && Object.values(cats).some((entry) => entry?.id === capture.id) && (
-        <span
-          key={capture.id}
-          className="royal-capture"
-          style={cellStyle(TRACK[capture.square]!)}
-        />
+      {captures.map(
+        (capture) =>
+          Object.values(cats).some((entry) => entry?.id === capture.id) && (
+            <span
+              key={capture.id}
+              className="royal-capture"
+              style={cellStyle(TRACK[capture.square]!)}
+            />
+          ),
       )}
       {celebrate && (
         <span
